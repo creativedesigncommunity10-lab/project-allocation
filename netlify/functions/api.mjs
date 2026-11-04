@@ -161,7 +161,7 @@ function publicUser(x) {
   return { id: x.id, username: x.username, fullName: x.fullName, sheet: x.sheet, role: x.role, division: x.division || divisionFor(spreadsheetId()) };
 }
 async function users() {
-  const rows = await read("'Users'!A2:H");
+  const rows = (await read("'Users'!A:H")).slice(1);
   return rows.map((r, i) => ({
     row: i + 2, id: r[0] || "", username: r[1] || "", fullName: r[2] || "",
     sheet: r[3] || "", role: r[4] || "", status: r[5] || "",
@@ -169,12 +169,12 @@ async function users() {
   })).filter(x => x.id || x.username);
 }
 async function projects() {
-  const rows = await read("'Projects'!A2:E");
+  const rows = (await read("'Projects'!A:E")).slice(1);
   return rows.map(r => ({ id: r[0] || "", name: r[1] || "", status: r[2] || "", by: r[3] || "" }))
     .filter(x => x.id || x.name);
 }
 async function memberRows(sheet) {
-  return read(`${quoteSheet(sheet)}!A2:E`);
+  return read(`${quoteSheet(sheet)}!A:E`).then(rows => rows.slice(1));
 }
 async function logAction(user, action, date, previous, next) {
   await append("'Audit_Log'!A:H", [[
@@ -387,7 +387,7 @@ async function apiAction(user, action, p) {
       if (divisionFor(spreadsheetId()) !== "Designer") fail("Request Design is only available in Designer division.",403);
       const meta = await metadata();
       if (!meta.has("REQUEST DESIGN")) fail('Sheet "REQUEST DESIGN" was not found.',404);
-      const rows = await read("'REQUEST DESIGN'!A2:T");
+      const rows = (await read("'REQUEST DESIGN'!A:T")).slice(1);
       const items = rows.map((r,i)=>({row:i+2,values:Array.from({length:20},(_,k)=>r[k]??"")})).filter(x=>x.values.some(v=>String(v).trim())).map(x=>{ x.values[0]=serialToDate(x.values[0]) || String(x.values[0]||""); return x; });
       if (p.mode === "list") return items;
       if (p.mode === "add") {
@@ -420,7 +420,7 @@ async function apiAction(user, action, p) {
       const row = [id("P"), name, user.role === "Admin" ? "Active" : "Pending", user.username,
         (Date.now()-Date.UTC(1899,11,30))/86400000];
       await append("'Projects'!A:E", [row]);
-      const checkRows = await read("'Projects'!A2:E");
+      const checkRows = (await read("'Projects'!A:E")).slice(1);
       const saved = checkRows.some(r => r[0] === row[0] && clean(r[1]) === name);
       if (!saved) fail("Project could not be saved to the spreadsheet. Please try again.", 500);
       return { id: row[0], name, status: row[2], by: row[3] };
@@ -444,7 +444,7 @@ async function apiAction(user, action, p) {
     }
     case "setProject": {
       admin(user);
-      const rows = await read("'Projects'!A2:E");
+      const rows = (await read("'Projects'!A:E")).slice(1);
       const i = rows.findIndex(r => r[0] === p.id);
       if (i < 0) fail("Project not found.", 404);
       const name = String(p.name || "").trim();
@@ -486,7 +486,7 @@ async function apiAction(user, action, p) {
       return { projects: Object.keys(projectSet).sort(), members };
     }
     case "audit": {
-      const rows = await read("'Audit_Log'!A2:H");
+      const rows = (await read("'Audit_Log'!A:H")).slice(1);
       return rows.slice(-600).filter(r => user.role === "Admin" || r[2] === user.username).reverse().slice(0,200)
         .map(r => ({
           id:r[0], ts:serialToDateTime(r[1]), user:r[2], action:r[4],
