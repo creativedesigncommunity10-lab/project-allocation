@@ -361,12 +361,35 @@ async function apiAction(user, action, p) {
     }
     case "projects": return projects();
     case "addProject": {
-      const name = String(p.name || "").trim();
+      const name = clean(p.name);
       if (!name) fail("Name is required.");
-      if ((await projects()).some(x => x.name.toLowerCase() === name.toLowerCase())) fail("Activity Type already exists.");
-      await append("'Projects'!A:E", [[id("P"), name, user.role === "Admin" ? "Active" : "Pending", user.username,
-        (Date.now()-Date.UTC(1899,11,30))/86400000]]);
-      return 1;
+      if (name.length > 100) fail("Name is too long (max 100 characters).");
+      const existing = await projects();
+      if (existing.some(x => x.name.toLowerCase() === name.toLowerCase())) fail("Activity Type already exists.");
+      const row = [id("P"), name, user.role === "Admin" ? "Active" : "Pending", user.username,
+        (Date.now()-Date.UTC(1899,11,30))/86400000];
+      await append("'Projects'!A:E", [row]);
+      const checkRows = await read("'Projects'!A2:E");
+      const saved = checkRows.some(r => r[0] === row[0] && clean(r[1]) === name);
+      if (!saved) fail("Project could not be saved to the spreadsheet. Please try again.", 500);
+      return { id: row[0], name, status: row[2], by: row[3] };
+    }
+    case "today": {
+      const date = new Intl.DateTimeFormat("en-CA", {
+        timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit"
+      }).format(new Date());
+      if (!user.sheet) return { date, day: null };
+      const rows = await memberRows(user.sheet);
+      const dayRows = rows.filter(r => serialToDate(r[0]) === date).map(r => ({
+        type: clean(r[2]) || "(none)", task: String(r[3] || ""), pct: Number(r[4]) || 0
+      }));
+      return {
+        date,
+        day: dayRows.length ? {
+          member: user.fullName, date, rows: dayRows,
+          total: dayRows.reduce((sum, r) => sum + r.pct, 0), mine: true
+        } : null
+      };
     }
     case "setProject": {
       admin(user);
@@ -475,7 +498,7 @@ export default async (request) => {
     const status = error.status || 500;
     return Response.json({
       success:false,
-      message: status >= 500 ? (error.message || "Internal server error.") : error.message,
+      message: status >= 500 ? "Server error. Check the Netlify Function logs for details." : error.message,
       ...(error.code ? {code:error.code} : {})
     }, {status});
   }
