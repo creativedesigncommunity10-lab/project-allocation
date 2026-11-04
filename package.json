@@ -1,0 +1,10 @@
+{
+  "name": "project-allocation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Project Allocation web app migrated from Google Apps Script to Netlify Functions",
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  }
+}
