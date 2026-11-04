@@ -1,73 +1,45 @@
+
 const $=s=>document.querySelector(s),esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let T=sessionStorage.getItem('t'),U,P=[],D=[],M=[],UL=[];
-const today=()=>new Date().toLocaleDateString('sv');
-const API_ENDPOINT = '/.netlify/functions/api';
-
-async function requestApi(action, payload = {}, token = T) {
-  const response = await fetch(API_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, token, payload })
-  });
-
-  let result;
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error('Invalid response from server.');
-  }
-
-  if (!response.ok || result.success === false) {
-    const error = new Error(result.message || 'Request failed.');
-    if (result.code === 'SESSION') {
-      sessionStorage.clear();
-      location.reload();
-    }
-    throw error;
-  }
-  return result.data;
+const today=()=>new Date().toLocaleDateString('sv',{timeZone:'Asia/Jakarta'});const nv=o=>document.body.classList.toggle('nv',o);
+const API_URL='/.netlify/functions/api';
+async function requestApi(action,payload={},token=T){
+ const response=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload,token})});
+ let result={};try{result=await response.json()}catch(e){}
+ if(!response.ok||!result.success){
+  const error=new Error(result.message||`Request failed (${response.status})`);
+  error.status=response.status;error.code=result.code;
+  if(error.code==='SESSION'||response.status===401){sessionStorage.clear();location.reload();}
+  throw error;
+ }
+ return result.data;
 }
-
-const api = (a, p) => requestApi(a, p || {}, T);
+const api=(a,p)=>requestApi(a,p||{},T);
 function toast(m,bad){const t=$('#toast');t.textContent=m;t.style.background=bad?'var(--e)':'var(--a)';t.hidden=false;clearTimeout(window.tt);window.tt=setTimeout(()=>t.hidden=true,3500)}
 const msg=e=>String(e.message||e).replace(/^Error:\s*/,'');
 const st=t=>Math.abs(t-100)<.001?'<span class="bd ok">Completed</span>':'<span class="bd w">Needs review</span>';
 
-async function doLogin() {
-  const b = $('#lb');
-  b.disabled = true;
-  try {
-    const r = await requestApi('login', {
-      username: $('#lu').value.trim(),
-      password: $('#lp').value
-    }, null);
-    T = r.token;
-    sessionStorage.setItem('t', T);
-    start(r.user);
-  } catch (e) {
-    toast(msg(e), 1);
-    b.disabled = false;
-  }
-}
+async function doLogin(){const b=$('#lb');b.disabled=true;
+ try{const r=await requestApi('login',{username:$('#lu').value.trim(),password:$('#lp').value},null);T=r.token;sessionStorage.setItem('t',T);start(r.user)}
+ catch(e){toast(msg(e),1);b.disabled=false}}
 function out(){api('logout').finally(()=>{sessionStorage.clear();location.reload()})}
 if(T)api('me').then(start).catch(()=>{});
 
 const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['usr','User Management','A']];
-function toggleNav(){const s=$('#sidebar');const open=s.classList.toggle('nav-open');$('#menuToggle').setAttribute('aria-expanded',String(open));}
 function start(u){U=u;$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
  $('#nav').innerHTML=NAV.filter(n=>!n[2]||u.role=='Admin').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');
  go('dash')}
-async function go(p){document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+p));if(window.matchMedia('(max-width:800px)').matches){$('#sidebar').classList.remove('nav-open');$('#menuToggle').setAttribute('aria-expanded','false');}
+async function go(p){nv(0);document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+p));
  const n=NAV.find(x=>x[0]==p);$('#title').textContent=n[1];$('#sub').textContent=U.role=='Admin'?'All members':'My data';
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';try{await V[p]()}catch(e){$('#view').innerHTML='';toast(msg(e),1)}}
 
 function modal(t,b,ok,fn){$('#m').innerHTML=`<div class="mb"><h3>${t}</h3>${b}<div class="mf"><button class="btn2" onclick="cm()">Cancel</button><button class="btn" id="mo">${ok}</button></div></div>`;$('#m').hidden=false;
  $('#mo').onclick=async()=>{$('#mo').disabled=true;try{await fn();cm()}catch(e){toast(msg(e),1);$('#mo').disabled=false}}}
 const cm=()=>$('#m').hidden=true;
-const tbl=(h,rows)=>rows.length?`<table><tr>${h.map(x=>'<th>'+x+'</th>').join('')}</tr>${rows.join('')}</table>`:'<div class="empty">Nothing here yet.</div>';
+const tbl=(h,rows)=>rows.length?`<table class="rt"><tr>${h.map(x=>'<th>'+x+'</th>').join('')}</tr>${rows.join('')}</table>`:'<div class="empty">Nothing here yet.</div>';
 
 const V={
- async dash(){DS=DS||{y:String(new Date().getFullYear()),m:''};await dsh()},
+ async dash(){DS=DS||{y:today().slice(0,4),m:today().slice(5,7)};await dsh()},
 
  async act(){const adm=U.role=='Admin',us=adm?(UC||(UC=await api('users'))):[];await ensureP();
   $('#view').innerHTML=`<div class="bar2"><input type="month" id="fm" value="${today().slice(0,7)}" onchange="lad()">${adm?`<select id="fu" onchange="lad()"><option value="">All members</option>${us.filter(x=>x.sheet).map(x=>`<option value="${esc(x.username)}">${esc(x.fullName)}</option>`).join('')}</select>`:''}<input id="fq" placeholder="Search" oninput="db(rd)">${U.sheet?'<button class="btn" onclick="openDay(-1)">+ Add Daily Activity</button>':''}</div><div class="card" id="tb"></div>`;lad()},
@@ -93,20 +65,27 @@ function pie(e){if(!e.length)return'<div class="empty">No allocation in this per
  const t=L.reduce((a,x)=>a+x[1],0),P=(a)=>(100+90*Math.cos(a)).toFixed(2)+','+(100+90*Math.sin(a)).toFixed(2);let a0=-Math.PI/2;
  const sl=L.map((x,i)=>{const f=x[1]/t,a1=a0+f*2*Math.PI,c=PC[i%8];let s=f>.9999?`<circle cx="100" cy="100" r="90" fill="${c}"/>`:`<path d="M100 100L${P(a0)}A90 90 0 ${f>.5?1:0} 1 ${P(a1)}Z" fill="${c}" stroke="#fff" stroke-width="2"><title>${esc(x[0])}: ${(f*100).toFixed(1)}%</title></path>`;a0=a1;return s}).join('');
  return`<div class="pie"><svg viewBox="0 0 200 200">${sl}</svg><div class="lg2">${L.map((x,i)=>`<div><i style="background:${PC[i%8]}"></i><span>${esc(x[0])}</span><b>${(x[1]/t*100).toFixed(1)}%</b><em>${x[1].toFixed(1)} MD</em></div>`).join('')}</div></div>`}
-async function dsh(){const d=await api('dash',{year:DS.y,month:DS.m}),A=U.role=='Admin',cy=String(new Date().getFullYear()),cm=String(new Date().getMonth()+1).padStart(2,'0'),ys=[...new Set(d.years.concat([cy]))].sort(),k=(l,v)=>`<div class="card kpi"><small>${l}</small><b>${v}</b></div>`;
+async function dsh(){const d=await api('dash',{year:DS.y,month:DS.m}),A=U.role=='Admin',cy=today().slice(0,4),cm=today().slice(5,7),ys=[...new Set(d.years.concat([cy]))].sort(),k=(l,v)=>`<div class="card kpi"><small>${l}</small><b>${v}</b></div>`;
  $('#view').innerHTML=`<div class="bar2"><select onchange="DS.y=this.value;dsh()">${ys.map(y=>`<option ${y==DS.y?'selected':''}>${y}</option>`).join('')}</select>
  <div class="seg"><button class="${!DS.m?'on':''}" onclick="DS.m='';dsh()">Whole year</button><button class="${DS.m==cm&&DS.y==cy?'on':''}" onclick="DS.y='${cy}';DS.m='${cm}';dsh()">This month</button></div>
  <select onchange="DS.m=this.value;dsh()"><option value="">All months</option>${MN.map((n,i)=>{const v=String(i+1).padStart(2,'0');return`<option value="${v}" ${v==DS.m?'selected':''}>${n}</option>`}).join('')}</select></div>
  <div class="kpis">${k('Total mandays',d.total.toFixed(2))}${k('Active projects',d.byProject.length)}${k('Days logged',d.days)}${k('Avg daily allocation',d.avg.toFixed(0)+'%')}${k('Days needing review',d.review)}</div>
- <div class="grid2"><div class="card"><b>Project allocation</b>${pie(d.byProject)}</div>${A?`<div class="card"><b>Team member allocation</b>${pie(d.byMember)}</div>`:''}</div>`}
+ ${U.sheet?'<div class="card" id="td" style="margin-bottom:14px"></div>':''}
+ <div class="grid2"><div class="card"><b>Project allocation</b>${pie(d.byProject)}</div>${A?`<div class="card"><b>Team member allocation</b>${pie(d.byMember)}</div>`:''}</div>`;if($('#td'))TDay?rtd():ltd()}
+/* today's activity shortcut (own records, today only; Asia/Jakarta date from server) */
+let TDay=null;
+function ltd(){TDay=null;rtd();api('today').then(r=>{TDay=r;rtd()}).catch(e=>{const x=$('#td');if(x)x.innerHTML='<div class="empty">Could not load today\'s activities. <a onclick="ltd()">Retry</a></div>'})}
+function rtd(){const e=$('#td'),d=TDay;if(!e)return;
+ e.innerHTML=!d?'<div class="sk" style="height:70px;border-radius:12px"></div>':!d.day?`<b>Apa yang kamu lakukan hari ini?</b><p style="color:var(--t2);margin:6px 0 12px">Tambahkan aktivitas harianmu untuk mencatat pekerjaan yang telah kamu selesaikan.</p><button class="btn" onclick="openDay(-1)">+ Add Daily Activity</button>`
+ :`<div class="bar2" style="justify-content:space-between;margin-bottom:6px"><b>Today · ${d.date}</b><button class="btn2" onclick="openDay(0,[TDay.day])">Edit</button></div>${d.day.rows.map(r=>`<div style="padding:8px 0;border-top:1px solid rgba(29,95,208,.1)"><b>${esc(r.type)}</b> · ${r.pct}%<div style="color:var(--t2);white-space:pre-wrap">${esc(r.task)}</div></div>`).join('')}<div style="margin-top:6px">${st(d.day.total)}</div>`}
 
 /* activities */
 function lad(){api('days',{month:$('#fm').value,member:$('#fu')?$('#fu').value:''}).then(d=>{D=d;PGN=25;rd()}).catch(e=>toast(msg(e),1))}
 function rd(){const q=($('#fq').value||'').toLowerCase(),L=D.map((d,i)=>[d,i]).filter(([d])=>!q||[d.date,d.member,...d.rows.flatMap(r=>[r.type,r.task,String(r.pct)])].join(' ').toLowerCase().includes(q));
  $('#tb').innerHTML=tbl(['Date','Member','Activities','Total','Mandays','Status',''],L.slice(0,PGN).map(([d,i])=>`<tr><td>${d.date}<td>${esc(d.member)}<td>${d.rows.map(r=>`<div><b>${esc(r.type)}</b> ${r.pct}% — ${esc(String(r.task).slice(0,90))}</div>`).join('')}<td>${d.total}%<td>${(d.total/100).toFixed(2)}<td>${st(d.total)}<td>${d.mine?`<a onclick="openDay(${i})">Edit</a><a onclick="delDay(${i})">Delete</a>`:''}</tr>`))+(L.length>PGN?`<div style="text-align:center;margin-top:12px"><button class="btn2" onclick="PGN+=25;rd()">Show more (${L.length-PGN} left)</button></div>`:'')}
-async function openDay(i){await ensureP();const d=i>=0?D[i]:null;
+async function openDay(i,src){await ensureP();const d=i>=0?(src||D)[i]:null;
  modal(d?'Edit Activity':'Add Daily Activity',`<datalist id="pl">${P.filter(p=>p.status!='Archived').map(p=>`<option value="${esc(p.name)}">`).join('')}</datalist><label>Activity date</label><input type="date" id="dd" value="${d?d.date:today()}" ${d?'disabled':''}><label>Project / Client (pick one or type a new Activity Type)</label><div id="rows"></div><button class="btn2" onclick="addRow()">+ Add Project Row</button><div class="sum" id="cs"></div>`,'Save',
- ()=>api('save',{mode:d?'edit':'create',date:$('#dd').value,rows:[...document.querySelectorAll('.r')].map(r=>({type:r.querySelector('.ty').value,task:r.querySelector('.tk').value,pct:r.querySelector('.pc').value}))}).then(()=>{lad();P=[];toast('Saved')}));
+ ()=>api('save',{mode:d?'edit':'create',date:$('#dd').value,rows:[...document.querySelectorAll('.r')].map(r=>({type:r.querySelector('.ty').value,task:r.querySelector('.tk').value,pct:r.querySelector('.pc').value}))}).then(()=>{P=[];toast('Saved');if($('#fm'))lad();if($('#td'))ltd()}));
  (d?d.rows:[{}]).forEach(addRow);calc()}
 function addRow(r){r=r||{};const e=document.createElement('div');e.className='r';
  e.innerHTML=`<input class="ty" list="pl" placeholder="Activity Type" value="${esc(r.type)}"><textarea class="tk" placeholder="Task / Deliverables">${esc(r.task)}</textarea><input class="pc" type="number" min="1" max="100" step="any" placeholder="%" value="${r.pct||''}" oninput="calc()"><button class="btn2" onclick="this.parentNode.remove();calc()">✕</button>`;$('#rows').appendChild(e);calc()}
@@ -117,7 +96,7 @@ function delDay(i){const d=D[i];modal('Delete activity',`<p>Delete all entries o
 /* projects */
 function rp(){const q=$('#fq').value.toLowerCase(),A=U.role=='Admin';
  $('#tb').innerHTML=tbl(['Activity Type','Status','Created by',A?'':''],P.filter(p=>p.name.toLowerCase().includes(q)).map(p=>`<tr><td>${esc(p.name)}<td><span class="bd ${p.status=='Active'?'ok':'w'}">${p.status}</span><td>${esc(p.by)}<td>${A?`<a onclick="renP('${p.id}')">Rename</a><select onchange="setP('${p.id}',null,this.value)">${['Active','Pending','Archived'].map(s=>`<option ${s==p.status?'selected':''}>${s}</option>`).join('')}</select>`:''}</tr>`))}
-function addP(){api('addProject',{name:$('#np').value}).then(()=>api('projects')).then(p=>{P=p;rp();toast('Added')}).catch(e=>toast(msg(e),1))}
+let APB=0;function addP(){if(APB)return;APB=1;api('addProject',{name:$('#np').value}).then(()=>api('projects')).then(p=>{P=p;$('#np').value='';rp();toast('Saved to spreadsheet')}).catch(e=>toast(msg(e),1)).finally(()=>APB=0)}
 function setP(id,name,status){const p=P.find(x=>x.id==id);api('setProject',{id,name:name||p.name,status:status||p.status}).then(()=>api('projects')).then(x=>{P=x;rp();toast('Updated')}).catch(e=>{toast(msg(e),1);rp()})}
 function renP(id){const p=P.find(x=>x.id==id);modal('Rename Activity Type',`<p>Past activities keep their original name.</p><input id="rn" value="${esc(p.name)}">`,'Save',()=>new Promise((ok,no)=>{api('setProject',{id,name:$('#rn').value,status:p.status}).then(()=>api('projects')).then(x=>{P=x;rp();ok()}).catch(no)}))}
 
@@ -135,3 +114,109 @@ function openU(i){const x=i>=0?UL[i]:{role:'Member',status:'Active'};
  ()=>api('saveUser',{id:x.id,username:$('#uu').value,fullName:$('#un').value,role:$('#ur').value,sheet:$('#us').value.trim(),status:$('#ut').value,password:$('#up').value}).then(()=>{UC=null;UL=[];toast('Saved');go('usr')}));
  $('#ur').value=x.role;$('#ut').value=x.status}
 function pw(){modal('Change password','<label>Current password</label><input type="password" id="po"><label>New password (min 8 characters)</label><input type="password" id="pn">','Save',()=>api('passwd',{old:$('#po').value,next:$('#pn').value}).then(()=>toast('Password changed')))}
+
+/* ---------- Branded controls: custom date/month picker + select dropdown ---------- */
+const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const SHORT_MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const isoToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const pad2=n=>String(n).padStart(2,'0');
+const parseISO=s=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||'');return m?{y:+m[1],m:+m[2],d:+m[3]}:null};
+const isoDate=(y,m,d)=>`${y}-${pad2(m)}-${pad2(d)}`;
+const dateLabel=s=>{const p=parseISO(s);return p?`${p.d} ${SHORT_MONTHS[p.m-1]} ${p.y}`:'Select date'};
+const monthLabel=s=>{const m=/^(\d{4})-(\d{2})$/.exec(s||'');return m?`${MONTH_NAMES[+m[2]-1]} ${m[1]}`:'Select month'};
+function svgIcon(name){return name==='chevron'?'<svg class="select-ui-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>':'<svg class="date-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>'}
+function syncSelectUI(sel){
+ const wrap=sel._selectUI;if(!wrap)return;
+ const value=wrap.querySelector('.select-ui-value'),trigger=wrap.querySelector('.select-ui-trigger');
+ const option=[...sel.options].find(o=>o.value===sel.value);
+ value.textContent=option?option.textContent.trim():'Select an option';
+ trigger.disabled=sel.disabled;
+ trigger.setAttribute('aria-expanded',wrap.classList.contains('open')?'true':'false');
+ wrap.querySelectorAll('.select-ui-option').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.value===sel.value)));
+}
+function closeSelectUI(wrap){wrap.classList.remove('open');const menu=wrap.querySelector('.select-ui-menu');if(menu)menu.hidden=true;syncSelectUI(wrap._native)}
+function enhanceSelect(sel){
+ if(sel.dataset.enhanced==='1')return;
+ sel.dataset.enhanced='1';
+ const wrap=document.createElement('div');wrap.className='select-ui';
+ if(sel.closest('.mb'))wrap.dataset.full='true';
+ const trigger=document.createElement('button');trigger.type='button';trigger.className='select-ui-trigger';trigger.innerHTML='<span class="select-ui-value"></span>'+svgIcon('chevron');
+ trigger.setAttribute('aria-haspopup','listbox');
+ const menu=document.createElement('div');menu.className='select-ui-menu';menu.hidden=true;menu.setAttribute('role','listbox');
+ const rebuild=()=>{
+  menu.innerHTML='';
+  [...sel.options].forEach(opt=>{
+   const b=document.createElement('button');b.type='button';b.className='select-ui-option';b.textContent=opt.textContent.trim();b.dataset.value=opt.value;b.disabled=opt.disabled;
+   b.setAttribute('role','option');b.setAttribute('aria-selected',String(opt.value===sel.value));
+   b.addEventListener('click',()=>{if(opt.disabled)return;sel.value=opt.value;sel.dispatchEvent(new Event('input',{bubbles:true}));sel.dispatchEvent(new Event('change',{bubbles:true}));closeSelectUI(wrap)});
+   menu.appendChild(b);
+  });
+  if(!sel.options.length)menu.innerHTML='<div class="select-ui-empty">No options available</div>';
+  syncSelectUI(sel);
+ };
+ wrap.append(trigger,menu);sel.parentNode.insertBefore(wrap,sel);wrap.appendChild(sel);
+ sel.classList.add('select-native-hidden');sel._selectUI=wrap;wrap._native=sel;
+ trigger.addEventListener('click',()=>{
+  if(sel.disabled)return;
+  document.querySelectorAll('.select-ui.open').forEach(x=>{if(x!==wrap)closeSelectUI(x)});
+  const opening=!wrap.classList.contains('open');wrap.classList.toggle('open',opening);menu.hidden=!opening;
+  if(opening){rebuild();const r=wrap.getBoundingClientRect();menu.classList.toggle('select-ui-up',window.innerHeight-r.bottom<menu.offsetHeight+30);trigger.setAttribute('aria-expanded','true')}
+ });
+ sel.addEventListener('change',()=>syncSelectUI(sel));
+ rebuild();
+}
+function enhanceDateInput(input){
+ if(input.dataset.enhanced==='1')return;
+ input.dataset.enhanced='1';
+ const isMonth=input.type==='month',wrap=document.createElement('div');wrap.className='date-ui';if(input.closest('.mb'))wrap.dataset.full='true';
+ const trigger=document.createElement('button');trigger.type='button';trigger.className='date-ui-trigger';trigger.innerHTML=`<span class="date-ui-value"></span>${svgIcon('calendar')}`;
+ const pop=document.createElement('div');pop.className='date-ui-pop';pop.hidden=true;
+ wrap.append(trigger,pop);input.parentNode.insertBefore(wrap,input);wrap.appendChild(input);
+ input.classList.add(isMonth?'month-native-hidden':'date-native-hidden');input._dateUI={wrap,trigger,pop,isMonth};
+ const sync=()=>{trigger.querySelector('.date-ui-value').textContent=isMonth?monthLabel(input.value):dateLabel(input.value);trigger.disabled=input.disabled};
+ const close=()=>{pop.hidden=true;wrap.classList.remove('open')};
+ const open=()=>{document.querySelectorAll('.date-ui.open').forEach(x=>{if(x!==wrap){x.classList.remove('open');x.querySelector('.date-ui-pop').hidden=true}});wrap.classList.add('open');pop.hidden=false;render()};
+ const dispatch=()=>{input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));sync()};
+ function render(){
+  if(isMonth){renderMonths();return}
+  const selected=parseISO(input.value)||parseISO(isoToday());let year=selected.y,month=selected.m;
+  if(pop.dataset.year)year=+pop.dataset.year;if(pop.dataset.month)month=+pop.dataset.month;
+  const first=new Date(year,month-1,1),offset=(first.getDay()+6)%7,days=new Date(year,month,0).getDate();
+  let cells='';
+  for(let i=0;i<42;i++){
+   const day=i-offset+1,valid=day>=1&&day<=days;
+   const date=valid?isoDate(year,month,day):'';
+   const cls=['date-ui-day',valid&&date===input.value?'selected':'',valid&&date===isoToday()?'today':'',valid?'':'muted'].filter(Boolean).join(' ');
+   const shown=valid?day:(day<1?new Date(year,month-1,0).getDate()+day:day-days);
+   cells+=`<button type="button" class="${cls}" ${valid?'':'disabled'} data-date="${date}">${shown}</button>`;
+  }
+  pop.innerHTML=`<div class="date-ui-head"><button type="button" class="date-ui-nav" data-step="-1" aria-label="Previous month">‹</button><strong class="date-ui-title">${MONTH_NAMES[month-1]} ${year}</strong><button type="button" class="date-ui-nav" data-step="1" aria-label="Next month">›</button></div><div class="date-ui-week">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<span>${x}</span>`).join('')}</div><div class="date-ui-grid">${cells}</div><div class="date-ui-footer"><button type="button" class="date-ui-text-btn" data-today>Today</button><button type="button" class="date-ui-text-btn" data-close>Close</button></div>`;
+  pop.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>{let m=month+(+b.dataset.step),y=year;if(m<1){m=12;y--}if(m>12){m=1;y++}pop.dataset.year=y;pop.dataset.month=m;render()}));
+  pop.querySelectorAll('[data-date]').forEach(b=>b.addEventListener('click',()=>{input.value=b.dataset.date;delete pop.dataset.year;delete pop.dataset.month;dispatch();close()}));
+  pop.querySelector('[data-today]').addEventListener('click',()=>{input.value=isoToday();dispatch();close()});
+  pop.querySelector('[data-close]').addEventListener('click',close);
+ }
+ function renderMonths(){
+  const p=/^(\d{4})-(\d{2})$/.exec(input.value||'')||/^(\d{4})-(\d{2})/.exec(isoToday());let year=pop.dataset.year?+pop.dataset.year:+p[1];
+  pop.innerHTML=`<div class="date-ui-month-year"><button type="button" data-y="-1">‹</button><strong>${year}</strong><button type="button" data-y="1">›</button></div><div class="date-ui-month-grid">${MONTH_NAMES.map((m,i)=>`<button type="button" class="date-ui-month ${input.value===`${year}-${pad2(i+1)}`?'selected':''}" data-month="${pad2(i+1)}">${m.slice(0,3)}</button>`).join('')}</div><div class="date-ui-footer"><button type="button" class="date-ui-text-btn" data-current>Current month</button><button type="button" class="date-ui-text-btn" data-close>Close</button></div>`;
+  pop.querySelectorAll('[data-y]').forEach(b=>b.addEventListener('click',()=>{pop.dataset.year=year+(+b.dataset.y);renderMonths()}));
+  pop.querySelectorAll('[data-month]').forEach(b=>b.addEventListener('click',()=>{input.value=`${year}-${b.dataset.month}`;dispatch();close()}));
+  pop.querySelector('[data-current]').addEventListener('click',()=>{input.value=isoToday().slice(0,7);dispatch();close()});
+  pop.querySelector('[data-close]').addEventListener('click',close);
+ }
+ trigger.addEventListener('click',()=>{if(input.disabled)return;if(wrap.classList.contains('open'))close();else open()});
+ input.addEventListener('change',sync);sync();
+}
+function enhanceControls(root=document){
+ root.querySelectorAll('select:not([data-enhanced="1"])').forEach(enhanceSelect);
+ root.querySelectorAll('input[type="date"]:not([data-enhanced="1"]),input[type="month"]:not([data-enhanced="1"])').forEach(enhanceDateInput);
+}
+document.addEventListener('click',e=>{
+ if(!e.target.closest('.select-ui'))document.querySelectorAll('.select-ui.open').forEach(closeSelectUI);
+ if(!e.target.closest('.date-ui'))document.querySelectorAll('.date-ui.open').forEach(w=>{w.classList.remove('open');const p=w.querySelector('.date-ui-pop');if(p)p.hidden=true});
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.select-ui.open').forEach(closeSelectUI);document.querySelectorAll('.date-ui.open').forEach(w=>{w.classList.remove('open');w.querySelector('.date-ui-pop').hidden=true})}});
+const controlObserver=new MutationObserver(records=>{for(const r of records)r.addedNodes.forEach(n=>{if(n.nodeType===1){if(n.matches?.('select,input[type="date"],input[type="month"]'))enhanceControls(n.parentNode||document);else enhanceControls(n)}})});
+controlObserver.observe(document.body,{childList:true,subtree:true});
+document.addEventListener('DOMContentLoaded',()=>enhanceControls());
+
