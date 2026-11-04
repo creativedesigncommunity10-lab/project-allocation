@@ -553,7 +553,8 @@ export default async (request) => {
       const homeDivision = tokenPayload.division;
       if (!DIVISIONS[homeDivision]) fail("SESSION",401,"SESSION");
       const user = await requestContext.run({ spreadsheetId: DIVISIONS[homeDivision], division: homeDivision }, () => authUser(body.token));
-      const activeDivision = user.role === "Admin" ? (DIVISIONS[payload.division] ? payload.division : "UI/UX") : homeDivision;
+      const requestedDivision = body.division || payload.division;
+      const activeDivision = user.role === "Admin" ? (DIVISIONS[requestedDivision] ? requestedDivision : "UI/UX") : homeDivision;
       if (action === "passwd") data = await requestContext.run({ spreadsheetId: DIVISIONS[homeDivision], division: homeDivision }, () => apiAction(user, action, payload));
       else data = await requestContext.run({ spreadsheetId: DIVISIONS[activeDivision], division: activeDivision }, async () => {
         const scopedUser = { ...user, division: activeDivision };
@@ -576,20 +577,46 @@ export default async (request) => {
 async function login(username, password) {
   const candidates = ["Admin", "UI/UX", "Digital Marketing", "Designer"].filter(d => DIVISIONS[d]);
   const matches = [];
+  const missingUsersTabs = [];
+
+  // A division without a Users tab must not break authentication for every other division.
+  // Check sheet metadata first so Google Sheets does not receive an invalid sheet range.
   for (const division of candidates) {
     const found = await requestContext.run({ spreadsheetId: DIVISIONS[division], division }, async () => {
+      const meta = await metadata();
+      if (!meta.has("Users")) {
+        missingUsersTabs.push(division);
+        return [];
+      }
       const list = await users();
-      return list.filter(x => String(x.username).toLowerCase() === String(username || "").toLowerCase()).map(x => ({...x, division}));
+      return list
+        .filter(x => String(x.username).trim().toLowerCase() === String(username || "").trim().toLowerCase())
+        .map(x => ({ ...x, division }));
     });
     matches.push(...found);
   }
-  if (matches.length > 1) fail("This username exists in more than one division. Ask an administrator to make usernames unique.", 409);
+
+  if (matches.length > 1) {
+    fail("This username exists in more than one division. Ask an administrator to make usernames unique.", 409);
+  }
   const u = matches[0];
-  if (!u || u.status !== "Active" || hashPassword(String(password || ""), u.salt) !== u.hash) {
+  if (!u) {
+    if (missingUsersTabs.length === candidates.length) {
+      fail("User directories are not initialized. Run the development Setup first.", 503);
+    }
+    if (missingUsersTabs.length) {
+      fail(`The Users tab is missing in: ${missingUsersTabs.join(", ")}. Run Setup to initialize all divisions, then try again.`, 503);
+    }
+    fail("Invalid username or password.", 401);
+  }
+  if (u.status !== "Active" || hashPassword(String(password || ""), u.salt) !== u.hash) {
     fail("Invalid username or password.", 401);
   }
   return requestContext.run({ spreadsheetId: DIVISIONS[u.division], division: u.division }, () => ({
-    token:createToken(u),
-    user:{...publicUser(u),availableDivisions:u.role === "Admin" ? DIVISION_NAMES.filter(d=>!!DIVISIONS[d]) : [u.division]}
+    token: createToken(u),
+    user: {
+      ...publicUser(u),
+      availableDivisions: u.role === "Admin" ? DIVISION_NAMES.filter(d => !!DIVISIONS[d]) : [u.division]
+    }
   }));
 }
