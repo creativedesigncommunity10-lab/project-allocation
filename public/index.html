@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UI/UX Project Allocation</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/css/style.css"></head><body>
+
+<div id="login"><div class="lgc"><div class="ill"><div><h2>See where every day goes.</h2><p>Log daily work, keep each day at 100%, and watch team capacity at a glance.</p></div>
+<svg viewBox="0 0 480 330" style="width:100%;margin-top:14px" aria-hidden="true"><defs><linearGradient id="gA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity=".16"/></linearGradient></defs>
+<circle cx="70" cy="60" r="60" fill="#7DD3FC" opacity=".35"/><circle cx="420" cy="280" r="80" fill="#fff" opacity=".12"/>
+<rect x="50" y="40" width="380" height="250" rx="24" fill="url(#gA)" stroke="#fff" stroke-opacity=".6"/>
+<circle cx="80" cy="66" r="5" fill="#fff" opacity=".8"/><circle cx="98" cy="66" r="5" fill="#fff" opacity=".5"/><circle cx="116" cy="66" r="5" fill="#fff" opacity=".3"/>
+<g transform="translate(150 190) rotate(-90)" fill="none" stroke-width="64"><circle r="32" stroke="#fff" stroke-dasharray="90.5 201"/><circle r="32" stroke="#93C5FD" stroke-dasharray="50.3 201" stroke-dashoffset="-90.5"/><circle r="32" stroke="#38BDF8" stroke-dasharray="36.2 201" stroke-dashoffset="-140.8"/><circle r="32" stroke="#1D5FD0" stroke-dasharray="24.1 201" stroke-dashoffset="-177"/></g>
+<rect x="250" y="95" width="130" height="9" rx="4" fill="#fff" opacity=".75"/><rect x="250" y="112" width="84" height="9" rx="4" fill="#fff" opacity=".4"/>
+<g fill="#fff" opacity=".85"><rect x="256" y="205" width="24" height="60" rx="7"/><rect x="290" y="172" width="24" height="93" rx="7"/><rect x="324" y="220" width="24" height="45" rx="7"/><rect x="358" y="150" width="24" height="115" rx="7"/><rect x="392" y="188" width="24" height="77" rx="7" opacity=".6"/></g>
+<rect x="326" y="12" width="136" height="58" rx="16" fill="#fff"/><text x="344" y="42" font-family="Inter,sans-serif" font-size="20" font-weight="600" fill="#0B3C8C">100%</text><text x="344" y="59" font-family="Inter,sans-serif" font-size="10" fill="#5B6F8F">Day allocated</text>
+<rect x="16" y="254" width="164" height="58" rx="16" fill="#fff"/><circle cx="40" cy="283" r="12" fill="#1D5FD0"/><circle cx="58" cy="283" r="12" fill="#38BDF8"/><circle cx="76" cy="283" r="12" fill="#93C5FD"/><text x="100" y="287" font-family="Inter,sans-serif" font-size="12" font-weight="500" fill="#0F2A4D">Team on track</text></svg></div>
+<div class="frm"><h2 style="margin:0 0 4px;color:#0B3C8C">Welcome back</h2><p style="margin:0 0 24px;color:var(--t2)">Sign in with the account your admin created.</p>
+<label>Username</label><input id="lu" autocomplete="username"><label>Password</label><input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key=='Enter')doLogin()">
+<button class="btn" id="lb" onclick="doLogin()">Sign in</button></div></div></div>
+
+<div id="app" hidden>
+<aside id="sidebar"><div class="side-head"><h1>Team Project<br>Allocation Dashboard</h1><button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false" onclick="toggleNav()">☰</button></div><div id="nav"></div>
+<div class="me"><div id="who"></div><a onclick="pw()">Change password</a><a onclick="out()">Sign out</a></div></aside>
+<main><div class="top"><h2 id="title"></h2><small id="sub"></small></div><div id="view"></div></main></div>
+<div id="m" hidden></div><div id="toast" hidden></div>
+
+<script src="./assets/js/app.js"></script></body></html>
