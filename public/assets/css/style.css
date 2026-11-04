@@ -168,3 +168,6 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
 }
 
 .mb .date-ui,.mb .select-ui{display:flex;width:100%;min-width:0}
+
+#division-control{margin-left:auto}#division-select{min-width:180px;max-width:240px;padding:9px 12px;border:1px solid var(--b);border-radius:10px;background:#fff;color:var(--t);font:inherit}.muted{color:var(--t2);font-size:12px}
+@media(max-width:800px){#division-control{margin-left:auto}#division-select{min-width:130px;max-width:180px;font-size:12px}}

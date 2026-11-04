@@ -1,10 +1,10 @@
 
 const $=s=>document.querySelector(s),esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let T=sessionStorage.getItem('t'),U,P=[],D=[],M=[],UL=[];
+let T=sessionStorage.getItem('t'),U,P=[],D=[],M=[],UL=[],ACTIVE_DIVISION=sessionStorage.getItem('division')||'UI/UX',AVAILABLE_DIVISIONS=[];
 const today=()=>new Date().toLocaleDateString('sv',{timeZone:'Asia/Jakarta'});const nv=o=>document.body.classList.toggle('nv',o);
 const API_URL='/.netlify/functions/api';
 async function requestApi(action,payload={},token=T){
- const response=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload,token})});
+ const response=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload,token,division:ACTIVE_DIVISION})});
  let result={};try{result=await response.json()}catch(e){}
  if(!response.ok||!result.success){
   const error=new Error(result.message||`Request failed (${response.status})`);
@@ -25,12 +25,18 @@ async function doLogin(){const b=$('#lb');b.disabled=true;
 function out(){api('logout').finally(()=>{sessionStorage.clear();location.reload()})}
 if(T)api('me').then(start).catch(()=>{});
 
-const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['usr','User Management','A']];
-function start(u){U=u;$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
- $('#nav').innerHTML=NAV.filter(n=>!n[2]||u.role=='Admin').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');
+const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['usr','User Management','A']];
+function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin'?['UI/UX','Digital Marketing','Designer','Admin']:[u.division]);
+ if(u.role!=='Admin')ACTIVE_DIVISION=u.division;else if(!AVAILABLE_DIVISIONS.includes(ACTIVE_DIVISION))ACTIVE_DIVISION='UI/UX';
+ sessionStorage.setItem('division',ACTIVE_DIVISION);$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
+ $('#division-control').innerHTML=u.role==='Admin'?`<label class="sr-only" for="division-select">Division</label><select id="division-select" onchange="switchDivision(this.value)">${AVAILABLE_DIVISIONS.map(d=>`<option ${d===ACTIVE_DIVISION?'selected':''}>${esc(d)}</option>`).join('')}</select>`:'';
+ $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||u.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');
  go('dash')}
-async function go(p){nv(0);document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+p));
- const n=NAV.find(x=>x[0]==p);$('#title').textContent=n[1];$('#sub').textContent=U.role=='Admin'?'All members':'My data';
+function switchDivision(d){if(U.role!=='Admin'||!AVAILABLE_DIVISIONS.includes(d))return;ACTIVE_DIVISION=d;sessionStorage.setItem('division',d);P=[];D=[];M=[];UL=[];UC=null;TDay=null;
+ $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||U.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');go('dash')}
+
+async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+p));
+ const n=NAV.find(x=>x[0]==p);$('#title').textContent=n[1];$('#sub').textContent=(U.role=='Admin'?'All members':'My data')+' · '+ACTIVE_DIVISION;
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';try{await V[p]()}catch(e){$('#view').innerHTML='';toast(msg(e),1)}}
 
 function modal(t,b,ok,fn){$('#m').innerHTML=`<div class="mb"><h3>${t}</h3>${b}<div class="mf"><button class="btn2" onclick="cm()">Cancel</button><button class="btn" id="mo">${ok}</button></div></div>`;$('#m').hidden=false;
@@ -52,6 +58,7 @@ const V={
  async his(){const a=await api('audit');
   $('#view').innerHTML='<div class="card" style="overflow:auto">'+tbl(['Time','User','Action','Activity date','Before / after'],a.map(x=>`<tr><td>${x.ts}<td>${esc(x.user)}<td><span class="bd ${/DELETE/.test(x.action)?'er':'ok'}">${x.action}</span><td>${esc(x.date)}<td><details><summary>View</summary><pre>${esc(x.prev)}\n→\n${esc(x.next)}</pre></details></tr>`))+'</div>'},
 
+ async req(){await loadRequests()},
  async usr(){UL=UC||(UC=await api('users')); 
   $('#view').innerHTML=`<div class="bar2"><button class="btn" onclick="openU(-1)">+ Create User</button></div><div class="card">${tbl(['Username','Name','Role','Member sheet','Status',''],UL.map((x,i)=>`<tr><td>${esc(x.username)}<td>${esc(x.fullName)}<td>${x.role}<td>${esc(x.sheet)}<td><span class="bd ${x.status=='Active'?'ok':'w'}">${x.status}</span><td><a onclick="openU(${i})">Edit</a></tr>`))}</div>`}
 };
@@ -114,6 +121,24 @@ function openU(i){const x=i>=0?UL[i]:{role:'Member',status:'Active'};
  ()=>api('saveUser',{id:x.id,username:$('#uu').value,fullName:$('#un').value,role:$('#ur').value,sheet:$('#us').value.trim(),status:$('#ut').value,password:$('#up').value}).then(()=>{UC=null;UL=[];toast('Saved');go('usr')}));
  $('#ur').value=x.role;$('#ut').value=x.status}
 function pw(){modal('Change password','<label>Current password</label><input type="password" id="po"><label>New password (min 8 characters)</label><input type="password" id="pn">','Save',()=>api('passwd',{old:$('#po').value,next:$('#pn').value}).then(()=>toast('Password changed')))}
+
+/* Designer-only Request Design module. The API preserves all 20 source columns. */
+let REQUESTS=[];
+async function loadRequests(){
+ const rows=await api('requestDesign',{mode:'list'});REQUESTS=rows;
+ $('#view').innerHTML=`<div class="bar2"><input id="rq-search" placeholder="Search requests..." oninput="renderRequests()"><select id="rq-month" onchange="renderRequests()"><option value="">All dates</option>${[...new Set(rows.map(x=>String(x.values[0]||'').slice(0,7)).filter(Boolean))].sort().reverse().map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select><button class="btn" onclick="editRequest(-1)">+ Add Request</button></div><div class="card" id="rq-table" style="overflow:auto"></div>`;
+ renderRequests();
+}
+function renderRequests(){const q=($('#rq-search')?.value||'').toLowerCase(),m=$('#rq-month')?.value||'';
+ const list=REQUESTS.filter(x=>{const v=x.values;return (!m||String(v[0]||'').slice(0,7)===m)&&(!q||v.join(' ').toLowerCase().includes(q))});
+ $('#rq-table').innerHTML=tbl(['Day & Date','Activity Type','Request','Attachment / Link',''],list.map(x=>`<tr><td>${esc(x.values[0])}<td>${esc(x.values[1])}<td style="white-space:pre-wrap;min-width:240px">${esc(x.values[2])}<td>${/^https?:\/\//i.test(String(x.values[3]||''))?`<a href="${esc(x.values[3])}" target="_blank" rel="noopener noreferrer">Open link</a>`:esc(x.values[3]||'—')}<td><a onclick="editRequest(${x.row})">Edit</a> <a onclick="deleteRequest(${x.row})">Delete</a></tr>`));
+}
+function editRequest(row){const old=row<0?Array(20).fill(''):[...(REQUESTS.find(x=>x.row===row)?.values||Array(20).fill(''))];
+ if(row>=0&&!REQUESTS.some(x=>x.row===row))return toast('Request not found. Please refresh.',1);
+ modal(row<0?'Add Request':'Edit Request',`<label>Day & Date</label><input type="date" id="rq-date" value="${esc(normalizeRequestDate(old[0]))}"><label>Activity Type</label><input id="rq-type" list="rq-types" value="${esc(old[1])}"><datalist id="rq-types">${[...new Set(REQUESTS.map(x=>x.values[1]).filter(Boolean))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist><label>Request</label><textarea id="rq-text" rows="4">${esc(old[2])}</textarea><label>Attachment / Link</label><input id="rq-link" type="url" value="${esc(old[3])}" placeholder="https://..."><p class="muted">Kolom lain pada sheet akan dipertahankan saat edit.</p>`, 'Save',async()=>{old[0]=$('#rq-date').value;old[1]=$('#rq-type').value.trim();old[2]=$('#rq-text').value.trim();old[3]=$('#rq-link').value.trim();await api('requestDesign',{mode:row<0?'add':'edit',row,values:old});await loadRequests();toast('Request saved')});
+}
+function normalizeRequestDate(v){if(!v)return'';const s=String(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const d=new Date(s);return Number.isNaN(d.getTime())?'':new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
+function deleteRequest(row){const item=REQUESTS.find(x=>x.row===row);if(!item)return;modal('Delete Request',`<p>Delete this request?</p><b>${esc(item.values[2])}</b><p>This action clears the row values in the source sheet.</p>`,'Delete',async()=>{await api('requestDesign',{mode:'delete',row});await loadRequests();toast('Request deleted')})}
 
 /* ---------- Branded controls: custom date/month picker + select dropdown ---------- */
 const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];

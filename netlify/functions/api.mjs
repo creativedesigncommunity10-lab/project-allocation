@@ -1,8 +1,24 @@
 import { google } from "googleapis";
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const TZ = "Asia/Jakarta";
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const DIVISIONS = {
+  "UI/UX": process.env.SPREADSHEET_ID_UI_UX || process.env.SPREADSHEET_ID,
+  "Digital Marketing": process.env.SPREADSHEET_ID_DIGITAL_MARKETING,
+  "Designer": process.env.SPREADSHEET_ID_DESIGNER,
+  "Admin": process.env.SPREADSHEET_ID_ADMIN
+};
+const DIVISION_NAMES = Object.keys(DIVISIONS);
+const DEFAULT_ACTIVITY_TYPES = {
+  "Digital Marketing": ["Aplikas","MBPS","MECS","Phincon","Phintech","MSS","Phintraco Group","Effist","Saldoo","emeteraiku","PNK","Shanata","Internal","RaiseCall","Natha Gadai","Nathara","Natharu","[POC] BSN","[POC] GYS","Onboarding","Others","Phintas - Profits","Trans Food","Soraba"],
+  "Designer": ["Aplikas","MBPS","MECS","Phincon","Phintech","MSS","Phintraco Group","Effist","Saldoo","emeteraiku","PNK","Shanata","Internal","RaiseCall","Natha Gadai","Nathara","Branding","HR","Other","Special Request","SEAITI","Natha Farm","[POC] BSN","[POC] GYS","Onboarding","Others","Phintas - Profits","Trans Food"],
+  "Admin": ["Aplikas","MBPS","MECS","Phincon","Phintech","MSS","Phintraco Group","Effist","Saldoo","emeteraiku","PNK","Shanata","Internal","RaiseCall","Natha Gadai","Nathara","Soraba","Natharu","[POC] BSN","[POC] GYS","Onboarding","Others","Phintas - Profits","Trans Food"]
+};
+
+const requestContext = new AsyncLocalStorage();
+function spreadsheetId() { const id = requestContext.getStore()?.spreadsheetId; if (!id) fail("Division database context is missing.",500); return id; }
+function divisionFor(id) { return DIVISION_NAMES.find(name => DIVISIONS[name] === id); }
 const RESERVED = ["Users", "Projects", "Audit_Log", "2026 Master All", "Summary 2026", "Master chart"];
 const HDR = ["Day & Date", "Team Name", "Activity Type (Nama PT/Project)", "Task / Deliverables", "Time Allocated (% - 100% for 1 Day)"];
 const HEADERS = {
@@ -12,7 +28,7 @@ const HEADERS = {
 };
 
 let sheetsClient;
-let sheetMeta;
+const sheetMeta = new Map();
 
 function clean(v) {
   return String(v ?? "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
@@ -24,7 +40,7 @@ function fail(message, status = 400, code) {
   throw e;
 }
 function requiredEnv() {
-  if (!SPREADSHEET_ID) fail("Missing SPREADSHEET_ID environment variable.", 500);
+  if (!spreadsheetId()) fail("Missing spreadsheet configuration for this division.", 500);
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) fail("Missing GOOGLE_SERVICE_ACCOUNT_JSON environment variable.", 500);
   if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) fail("SESSION_SECRET must contain at least 32 characters.", 500);
 }
@@ -42,29 +58,31 @@ function client() {
   return sheetsClient;
 }
 async function metadata(refresh = false) {
-  if (sheetMeta && !refresh) return sheetMeta;
-  const r = await client().spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-  sheetMeta = new Map((r.data.sheets || []).map(s => [s.properties.title, {
+  const db = spreadsheetId();
+  if (sheetMeta.has(db) && !refresh) return sheetMeta.get(db);
+  const r = await client().spreadsheets.get({ spreadsheetId: db });
+  const meta = new Map((r.data.sheets || []).map(s => [s.properties.title, {
     sheetId: s.properties.sheetId,
     title: s.properties.title,
     rowCount: s.properties.gridProperties?.rowCount || 1000
   }]));
-  return sheetMeta;
+  sheetMeta.set(db, meta);
+  return meta;
 }
 async function ensureTab(name, header) {
   let meta = await metadata();
   if (!meta.has(name)) {
     await client().spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       requestBody: { requests: [{ addSheet: { properties: { title: name } } }] }
     });
-    sheetMeta = null;
+    sheetMeta.delete(spreadsheetId());
     meta = await metadata(true);
   }
   const values = await read(`${quoteSheet(name)}!A1:${columnLetter(header.length)}1`);
   if (!values.length || values.every(v => v === "")) {
     await client().spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       range: `${quoteSheet(name)}!A1:${columnLetter(header.length)}1`,
       valueInputOption: "RAW",
       requestBody: { values: [header] }
@@ -80,7 +98,7 @@ function columnLetter(n) {
 }
 async function read(range, options = {}) {
   const r = await client().spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
+    spreadsheetId: spreadsheetId(),
     range,
     valueRenderOption: options.valueRenderOption || "UNFORMATTED_VALUE",
     dateTimeRenderOption: "SERIAL_NUMBER"
@@ -89,13 +107,13 @@ async function read(range, options = {}) {
 }
 async function write(range, values, input = "RAW") {
   return client().spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID, range, valueInputOption: input,
+    spreadsheetId: spreadsheetId(), range, valueInputOption: input,
     requestBody: { values }
   });
 }
 async function append(range, values, input = "RAW") {
   return client().spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID, range, valueInputOption: input,
+    spreadsheetId: spreadsheetId(), range, valueInputOption: input,
     insertDataOption: "INSERT_ROWS", requestBody: { values }
   });
 }
@@ -140,7 +158,7 @@ function checkPassword(p) {
   if (String(p || "").length < 8) fail("Password must be at least 8 characters.");
 }
 function publicUser(x) {
-  return { id: x.id, username: x.username, fullName: x.fullName, sheet: x.sheet, role: x.role };
+  return { id: x.id, username: x.username, fullName: x.fullName, sheet: x.sheet, role: x.role, division: x.division || divisionFor(spreadsheetId()) };
 }
 async function users() {
   const rows = await read("'Users'!A2:H");
@@ -184,7 +202,7 @@ async function authUser(token) {
   return user;
 }
 function createToken(user) {
-  const body = Buffer.from(JSON.stringify({ uid: user.id, exp: Date.now() + 6 * 60 * 60 * 1000 })).toString("base64url");
+  const body = Buffer.from(JSON.stringify({ uid: user.id, division: user.division || divisionFor(spreadsheetId()), exp: Date.now() + 6 * 60 * 60 * 1000 })).toString("base64url");
   const sig = crypto.createHmac("sha256", process.env.SESSION_SECRET).update(body).digest("base64url");
   return `${body}.${sig}`;
 }
@@ -197,15 +215,15 @@ async function ensureMemberSheet(name) {
   let meta = await metadata();
   if (!meta.has(name)) {
     await client().spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       requestBody: { requests: [{ addSheet: { properties: { title: name } } }] }
     });
-    sheetMeta = null;
+    sheetMeta.delete(spreadsheetId());
     await metadata(true);
     await write(`${quoteSheet(name)}!A1:E1`, [HDR]);
     const m = (await metadata()).get(name);
     await client().spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       requestBody: { requests: [{ updateSheetProperties: {
         properties: { sheetId: m.sheetId, gridProperties: { frozenRowCount: 1 } },
         fields: "gridProperties.frozenRowCount"
@@ -219,14 +237,18 @@ async function setup(payload) {
   await ensureTab("Projects", HEADERS.Projects);
   await ensureTab("Audit_Log", HEADERS.Audit_Log);
   const list = await users();
-  if (!list.length) {
+  if (!list.length && divisionFor(spreadsheetId()) === "Admin" && payload.adminPassword) {
     const password = String(payload.adminPassword || "");
     checkPassword(password);
     const salt = uuid();
     await append("'Users'!A:H", [[id("U"), "admin", "Administrator", "", "Admin", "Active", salt, hashPassword(password, salt)]]);
   }
   const existingProjects = await projects();
-  if (!existingProjects.length) {
+  if (!existingProjects.length && DEFAULT_ACTIVITY_TYPES[divisionFor(spreadsheetId())]) {
+    const sourceNames = DEFAULT_ACTIVITY_TYPES[divisionFor(spreadsheetId())];
+    await append("'Projects'!A:E", sourceNames.map(n => [id("P"), n, "Active", "source-dropdown", (Date.now()-Date.UTC(1899,11,30))/86400000]));
+  }
+  if (!existingProjects.length && divisionFor(spreadsheetId()) === "UI/UX") {
     const names = new Set();
     for (const member of ["RIAN", "RAKA", "VIO", "ZIDNY", "GHIFARI"]) {
       const meta = await metadata();
@@ -295,7 +317,7 @@ async function rewriteDay(sheet, date, additions, mode = "write") {
       fields: "userEnteredValue"
     }});
   }
-  if (requests.length) await client().spreadsheets.batchUpdate({ spreadsheetId: SPREADSHEET_ID, requestBody: { requests } });
+  if (requests.length) await client().spreadsheets.batchUpdate({ spreadsheetId: spreadsheetId(), requestBody: { requests } });
   return old.map(r => ({ type: r[2], task: r[3], pct: r[4] }));
 }
 async function apiAction(user, action, p) {
@@ -359,7 +381,36 @@ async function apiAction(user, action, p) {
       await logAction(user, "DELETE", p.date, old.map(r=>({type:r[2],task:r[3],pct:r[4]})), null);
       return 1;
     }
+    case "divisionInfo": return { division: divisionFor(spreadsheetId()), members: (await users()).filter(x=>x.sheet).map(x=>({username:x.username,fullName:x.fullName,sheet:x.sheet})) };
     case "projects": return projects();
+    case "requestDesign": {
+      if (divisionFor(spreadsheetId()) !== "Designer") fail("Request Design is only available in Designer division.",403);
+      const meta = await metadata();
+      if (!meta.has("REQUEST DESIGN")) fail('Sheet "REQUEST DESIGN" was not found.',404);
+      const rows = await read("'REQUEST DESIGN'!A2:T");
+      const items = rows.map((r,i)=>({row:i+2,values:Array.from({length:20},(_,k)=>r[k]??"")})).filter(x=>x.values.some(v=>String(v).trim())).map(x=>{ x.values[0]=serialToDate(x.values[0]) || String(x.values[0]||""); return x; });
+      if (p.mode === "list") return items;
+      if (p.mode === "add") {
+        const values = Array.from({length:20},(_,i)=>p.values?.[i] ?? "");
+        if (!values[0] || !values[1] || !values[2]) fail("Date, Activity Type and Request are required.");
+        await append("'REQUEST DESIGN'!A:T",[values],"USER_ENTERED");
+        await logAction(user,"REQUEST_DESIGN_CREATE",String(values[0]),null,values.slice(0,4)); return 1;
+      }
+      const row = Number(p.row); if (!Number.isInteger(row) || row < 2) fail("Invalid request row.");
+      if (p.mode === "edit") {
+        const values = Array.from({length:20},(_,i)=>p.values?.[i] ?? "");
+        if (!values[0] || !values[1] || !values[2]) fail("Date, Activity Type and Request are required.");
+        await write(`'REQUEST DESIGN'!A${row}:T${row}`,[values],"USER_ENTERED");
+        await logAction(user,"REQUEST_DESIGN_UPDATE",String(values[0]),null,values.slice(0,4)); return 1;
+      }
+      if (p.mode === "delete") {
+        const before = await read(`'REQUEST DESIGN'!A${row}:T${row}`);
+        if (!before.length) fail("Request not found.",404);
+        await write(`'REQUEST DESIGN'!A${row}:T${row}`,[Array(20).fill("")],"RAW");
+        await logAction(user,"REQUEST_DESIGN_DELETE",String(before[0]?.[0]||""),before[0]?.slice(0,4),null); return 1;
+      }
+      fail("Invalid Request Design operation.");
+    }
     case "addProject": {
       const name = clean(p.name);
       if (!name) fail("Name is required.");
@@ -487,11 +538,29 @@ export default async (request) => {
     const action = String(body.action || "");
     const payload = body.payload || {};
     if (action === "setup") {
-      const result = await setup(payload);
-      return Response.json({success:true,data:result});
+      const results = {};
+      for (const division of DIVISION_NAMES) {
+        if (!DIVISIONS[division]) continue;
+        results[division] = await requestContext.run({ spreadsheetId: DIVISIONS[division], division }, () => setup(payload));
+      }
+      return Response.json({success:true,data:{initialized:true,divisions:results}});
     }
-    const data = action === "login" ? await login(payload.username, payload.password) :
-      await apiAction(await authUser(body.token), action, payload);
+    let data;
+    if (action === "login") data = await login(payload.username, payload.password);
+    else {
+      let tokenPayload;
+      try { tokenPayload = JSON.parse(Buffer.from(String(body.token||"").split(".")[0], "base64url").toString("utf8")); } catch { fail("SESSION",401,"SESSION"); }
+      const homeDivision = tokenPayload.division;
+      if (!DIVISIONS[homeDivision]) fail("SESSION",401,"SESSION");
+      const user = await requestContext.run({ spreadsheetId: DIVISIONS[homeDivision], division: homeDivision }, () => authUser(body.token));
+      const activeDivision = user.role === "Admin" ? (DIVISIONS[payload.division] ? payload.division : "UI/UX") : homeDivision;
+      if (action === "passwd") data = await requestContext.run({ spreadsheetId: DIVISIONS[homeDivision], division: homeDivision }, () => apiAction(user, action, payload));
+      else data = await requestContext.run({ spreadsheetId: DIVISIONS[activeDivision], division: activeDivision }, async () => {
+        const scopedUser = { ...user, division: activeDivision };
+        if (action === "me") return { ...publicUser(user), activeDivision, availableDivisions: user.role === "Admin" ? DIVISION_NAMES.filter(d=>!!DIVISIONS[d]) : [homeDivision] };
+        return apiAction(scopedUser, action, payload);
+      });
+    }
     return Response.json({success:true,data});
   } catch (error) {
     console.error("Project Allocation API:", error);
@@ -505,10 +574,22 @@ export default async (request) => {
 };
 
 async function login(username, password) {
-  const list = await users();
-  const u = list.find(x => String(x.username).toLowerCase() === String(username || "").toLowerCase());
+  const candidates = ["Admin", "UI/UX", "Digital Marketing", "Designer"].filter(d => DIVISIONS[d]);
+  const matches = [];
+  for (const division of candidates) {
+    const found = await requestContext.run({ spreadsheetId: DIVISIONS[division], division }, async () => {
+      const list = await users();
+      return list.filter(x => String(x.username).toLowerCase() === String(username || "").toLowerCase()).map(x => ({...x, division}));
+    });
+    matches.push(...found);
+  }
+  if (matches.length > 1) fail("This username exists in more than one division. Ask an administrator to make usernames unique.", 409);
+  const u = matches[0];
   if (!u || u.status !== "Active" || hashPassword(String(password || ""), u.salt) !== u.hash) {
     fail("Invalid username or password.", 401);
   }
-  return {token:createToken(u), user:publicUser(u)};
+  return requestContext.run({ spreadsheetId: DIVISIONS[u.division], division: u.division }, () => ({
+    token:createToken(u),
+    user:{...publicUser(u),availableDivisions:u.role === "Admin" ? DIVISION_NAMES.filter(d=>!!DIVISIONS[d]) : [u.division]}
+  }));
 }

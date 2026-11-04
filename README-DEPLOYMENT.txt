@@ -54,3 +54,33 @@ The setup creates the `Users`, `Projects`, and `Audit_Log` helper tabs if missin
 - Netlify Functions are stateless. Login sessions are signed tokens with a 6-hour expiry. Logging out clears the browser session; token expiry or deactivating a user invalidates access. Unlike Apps Script CacheService, this implementation does not maintain a server-side revocation list.
 - The original Apps Script LockService is not available in Netlify Functions. Avoid simultaneous edits to the same member/date until a persistent locking mechanism is added if concurrent writes become common.
 - For large spreadsheets, API reads may need pagination/caching optimization. This first migration prioritizes preserving existing behavior.
+
+
+MULTI-DIVISION CONFIGURATION (development branch)
+=================================================
+Configure these Netlify environment variables for the multi-division build:
+
+SPREADSHEET_ID_UI_UX=1Ua7qm8jCaxTa6MnhLmIa1p8OKeL-dd0-tFPTW_0OTX8
+SPREADSHEET_ID_DIGITAL_MARKETING=15ktIWxVQGpL4la1inLOyDsEyQFdBEmU5f60iX7mKB-0
+SPREADSHEET_ID_DESIGNER=1NFfGOENDkqiH3pzlZWOTa3j6vUfxh-V1KZAp0mzsjfE
+SPREADSHEET_ID_ADMIN=11-na7y3Y1LjINUHnhbdcbaKI6C6xGMwDaquqRB092dU
+GOOGLE_SERVICE_ACCOUNT_JSON=<existing service-account JSON; keep secret>
+SESSION_SECRET=<existing random secret, minimum 32 characters>
+SETUP_SECRET=<existing setup secret>
+
+Keep Production branch set to main. The development-multi-division branch should be deployed as a Branch Deploy.
+
+LOGIN MODEL
+- Admin credentials are read from the Admin spreadsheet Users tab.
+- Member credentials are read from the Users tab in their own division spreadsheet.
+- Admin can switch among all four configured divisions. Members are restricted server-side to their home division.
+- Usernames should be unique across all four divisions to avoid ambiguity at login.
+
+ONE-TIME SETUP
+After adding the four spreadsheet ID variables to the development branch deploy context, open /setup.html on the development deploy and initialize. This creates missing helper tabs only; existing user and activity data is preserved. The initial Admin account is created only if the Admin Users tab is empty and an initial password is supplied.
+
+DESIGNER REQUEST DESIGN
+The Designer navigation includes Request Design. It reads/writes the original REQUEST DESIGN sheet and preserves its 20-column row shape. The visible form edits the first four columns (date, activity type, request, link); other cells in the row are retained. Delete clears the row values rather than deleting the physical row.
+
+ACTIVITY TYPE SEEDING
+The Digital Marketing, Designer, and Admin Projects helper tabs are seeded from the manual dropdown values extracted from the uploaded 2026 XLSX reference files if their Projects tabs are empty. Distinct source spellings (for example Nathara/Natharu and Other/Others) are retained. UI/UX keeps its existing Projects helper data.

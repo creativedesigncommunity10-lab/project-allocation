@@ -1,0 +1,32 @@
+PROJECT ALLOCATION — MULTI-DIVISION DEVELOPMENT BUILD
+
+Changes in this build
+---------------------
+1. Replaced the single-database backend context with four isolated spreadsheet contexts:
+   UI/UX, Digital Marketing, Designer, and Admin.
+2. Login resolves accounts from the Users tab of the corresponding division database.
+3. Admin sessions are anchored to the Admin database and can request data from any configured division.
+4. Member requests are always forced to their authenticated home division by the backend, regardless of the division value sent by the browser.
+5. Admin division selector added to the application top bar.
+6. Added a Designer-only Request Design navigation item and list/add/edit/delete/search/month-filter UI.
+7. Request Design edits retain all 20 columns; visible form edits columns A-D. Delete clears row values without physically deleting the row.
+8. Added activity type seed lists for Digital Marketing, Designer, and Admin based on the manual dropdown values extracted from the supplied XLSX references. Distinct spellings are retained.
+9. Existing UI/UX SPREADSHEET_ID remains supported as a fallback for SPREADSHEET_ID_UI_UX.
+10. Setup endpoint now initializes helper tabs across all configured divisions and creates an initial Admin account only when the Admin Users tab is empty and an initial password is supplied.
+
+Validation performed
+--------------------
+- Node syntax check passed for netlify/functions/api.mjs.
+- Node syntax check passed for public/assets/js/app.js.
+- Full live Google Sheets integration test and browser end-to-end test were not possible in this workspace. Deploy to the development branch and test with the real Netlify environment variables before using the app.
+
+Important deployment notes
+--------------------------
+- Do not merge this branch to main until all acceptance tests pass.
+- Add the four spreadsheet ID environment variables in Netlify for the Branch deploy context.
+- Keep GOOGLE_SERVICE_ACCOUNT_JSON, SESSION_SECRET, and SETUP_SECRET as existing secret values; never paste private keys into chat or commit them.
+- Confirm the Service Account has Editor access to all four spreadsheets.
+- Run /setup.html on the development deploy once after setting environment variables.
+- Verify existing user accounts are present in each division's Users tab. The Admin account must exist in the Admin spreadsheet Users tab.
+- Usernames must be unique across all four divisions.
+- The uploaded XLSX dropdown lists are used only to seed empty Projects helper tabs. The actual live Google Sheets dropdown validation rules are not rewritten.

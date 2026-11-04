@@ -23,7 +23,7 @@
   <main class="setup-shell">
     <section class="card setup-card">
       <h1>Project Allocation Setup</h1>
-      <p>Initialize the helper sheets and the first administrator account for this deployment.</p>
+      <p>Initialize helper sheets across all configured divisions. Existing users and activity data will be preserved.</p>
       <form id="setupForm">
         <label for="setupSecret">Setup Secret</label>
         <input id="setupSecret" type="password" autocomplete="off" required>
@@ -47,9 +47,7 @@ form.addEventListener('submit',async e=>{
     const data=await response.json();
     if(!response.ok||!data.success)throw new Error(data.message||'Setup failed.');
     result.className='ok';
-    result.textContent=data.data.adminCreated
-      ?'Setup successful. The helper sheets and admin account have been initialized. Username: admin. Use the password you entered.'
-      :'Setup successful. Helper sheets are ready. Existing users were preserved; sign in with an existing account.';
+    result.textContent='Setup successful. Helper sheets are ready for: '+Object.keys(data.data.divisions||{}).join(', ')+'. Existing users and activity records were preserved. Sign in with your existing account.';
     result.style.display='block';
   }catch(err){result.className='err';result.textContent=err.message;result.style.display='block'}
   finally{button.disabled=false;button.textContent='Initialize Project Allocation'}
