@@ -25,7 +25,7 @@ async function doLogin(){const b=$('#lb');b.disabled=true;
 function out(){api('logout').finally(()=>{sessionStorage.clear();location.reload()})}
 if(T)api('me').then(start).catch(()=>{});
 
-const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['usr','User Management','A']];
+const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['usr','User Management','A'],['health','Data Connection','A']];
 function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin'?['UI/UX','Digital Marketing','Designer','Admin']:[u.division]);
  if(u.role!=='Admin')ACTIVE_DIVISION=u.division;else if(!AVAILABLE_DIVISIONS.includes(ACTIVE_DIVISION))ACTIVE_DIVISION='UI/UX';
  sessionStorage.setItem('division',ACTIVE_DIVISION);$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
@@ -60,7 +60,8 @@ const V={
 
  async req(){await loadRequests()},
  async usr(){UL=UC||(UC=await api('users')); 
-  $('#view').innerHTML=`<div class="bar2"><button class="btn" onclick="openU(-1)">+ Create User</button></div><div class="card">${tbl(['Username','Name','Role','Member sheet','Status',''],UL.map((x,i)=>`<tr><td>${esc(x.username)}<td>${esc(x.fullName)}<td>${x.role}<td>${esc(x.sheet)}<td><span class="bd ${x.status=='Active'?'ok':'w'}">${x.status}</span><td><a onclick="openU(${i})">Edit</a></tr>`))}</div>`}
+  $('#view').innerHTML=`<div class="bar2"><button class="btn" onclick="openU(-1)">+ Create User</button></div><div class="card">${tbl(['Username','Name','Role','Member sheet','Status',''],UL.map((x,i)=>`<tr><td>${esc(x.username)}<td>${esc(x.fullName)}<td>${x.role}<td>${esc(x.sheet)}<td><span class="bd ${x.status=='Active'?'ok':'w'}">${x.status}</span><td><a onclick="openU(${i})">Edit</a></tr>`))}</div>`},
+ async health(){const rows=await api('divisionHealth');$('#view').innerHTML=`<p class="muted">Read-only check of spreadsheet access, required tabs, member sheets, and activity data for each division.</p><div class="card" style="overflow:auto">${tbl(['Division','Connection','Users','Projects','Activity rows','Details'],rows.map(x=>`<tr><td><b>${esc(x.division)}</b><td><span class="bd ${x.ok?'ok':'er'}">${x.ok?'Connected':'Issue found'}</span><td>${x.users??'—'}<td>${x.projects??'—'}<td>${x.activityRows??'—'}<td>${esc(x.message||[...(x.missingTabs||[]).map(t=>'Missing tab: '+t),...(x.missingMemberSheets||[]).map(t=>'Missing member sheet: '+t)].join('; ')|| (x.ok?'All checks passed': 'Check spreadsheet configuration'))}</tr>`))}</div><p class="muted">This check does not change any spreadsheet data.</p>`}
 };
 
 let PGN=25,UC=null;const db=f=>{clearTimeout(window.dt);window.dt=setTimeout(f,200)};

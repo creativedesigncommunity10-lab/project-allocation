@@ -381,6 +381,35 @@ async function apiAction(user, action, p) {
       await logAction(user, "DELETE", p.date, old.map(r=>({type:r[2],task:r[3],pct:r[4]})), null);
       return 1;
     }
+    case "divisionHealth": {
+      admin(user);
+      const results = [];
+      for (const division of DIVISION_NAMES) {
+        const db = DIVISIONS[division];
+        if (!db) { results.push({ division, configured: false, ok: false, message: "Spreadsheet ID environment variable is missing." }); continue; }
+        try {
+          const result = await requestContext.run({ spreadsheetId: db, division }, async () => {
+            const meta = await metadata(true);
+            const tabs = [...meta.keys()];
+            const hasUsers = meta.has("Users");
+            const hasProjects = meta.has("Projects");
+            const memberList = hasUsers ? (await users()).filter(x => x.sheet) : [];
+            const projectList = hasProjects ? await projects() : [];
+            let activityRows = 0;
+            const missingMemberSheets = [];
+            for (const member of memberList) {
+              if (!meta.has(member.sheet)) { missingMemberSheets.push(member.sheet); continue; }
+              activityRows += Math.max(0, (await memberRows(member.sheet)).filter(r => r.some(v => v !== "" && v != null)).length);
+            }
+            return { division, configured: true, ok: hasUsers && hasProjects && missingMemberSheets.length === 0, tabs, users: memberList.length, projects: projectList.length, activityRows, missingTabs: [!hasUsers ? "Users" : null, !hasProjects ? "Projects" : null].filter(Boolean), missingMemberSheets };
+          });
+          results.push(result);
+        } catch (e) {
+          results.push({ division, configured: true, ok: false, message: String(e.message || e).slice(0, 240) });
+        }
+      }
+      return results;
+    }
     case "divisionInfo": return { division: divisionFor(spreadsheetId()), members: (await users()).filter(x=>x.sheet).map(x=>({username:x.username,fullName:x.fullName,sheet:x.sheet})) };
     case "projects": return projects();
     case "requestDesign": {

@@ -1,0 +1,20 @@
+MULTI-DIVISION DATA CONNECTION DIAGNOSTIC
+
+This build adds an Admin-only, read-only "Data Connection" page.
+It checks each configured division spreadsheet for:
+- spreadsheet access using the configured Google service account
+- Users and Projects tabs
+- member sheet names referenced by Users
+- activity row counts per division
+
+It does not create, edit, or delete spreadsheet data.
+
+After deploying this build to the development-multi-division branch:
+1. Sign in with the central Admin account.
+2. Open Data Connection in the left navigation.
+3. Review each division's status and Details column.
+4. Share a screenshot of the table (do not share secrets or environment variable values).
+
+The diagnostic is intended to identify whether a division has a missing spreadsheet ID,
+Google Sheets access/permission issue, missing tabs, missing member sheets, or simply no
+activity rows. It does not change the Production branch or production spreadsheet data.
