@@ -123,7 +123,7 @@ async function append(range, values, input = "RAW") {
 const MEETING_HEADERS = {
   Meetings: ["MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MeetingTitle", "MeetingDate", "StartTime", "EndTime", "MeetingType", "Location", "MeetingLink", "Agenda", "Description", "Status", "CreatedBy", "CreatedAt", "UpdatedAt"],
   Meeting_Participants: ["ParticipantID", "MeetingID", "DivisionID", "ParticipantName", "Attendance", "CreatedAt"],
-  Meeting_Minutes: ["MoMID", "MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MoMTitle", "MeetingDate", "Summary", "Discussion", "Decisions", "Status", "PDFURL", "CreatedBy", "CreatedAt", "UpdatedAt", "PublishedAt"],
+  Meeting_Minutes: ["MoMID", "MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MoMTitle", "MeetingDate", "Summary", "Discussion", "Decisions", "Status", "PDFURL", "CreatedBy", "CreatedAt", "UpdatedAt", "PublishedAt", "MeetingTime", "Participants"],
   Action_Items: ["ActionItemID", "MoMID", "DivisionID", "Title", "Description", "AssignedTo", "Priority", "DueDate", "Status", "CreatedBy", "CreatedAt", "UpdatedAt", "CompletedAt"],
   Action_History: ["HistoryID", "ActionItemID", "DivisionID", "Action", "OldValue", "NewValue", "ChangedBy", "ChangedAt", "Notes"]
 };
@@ -167,6 +167,16 @@ function sheetTime(v) {
   }
   return String(v || "");
 }
+function safeRichHtml(value) {
+  let html = String(value || "").slice(0, 50000);
+  html = html.replace(/<(script|style|iframe|object|embed|form|svg|math)[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
+  html = html.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  html = html.replace(/\s+style\s*=\s*(["'])(.*?)\1/gi, (_, q, style) => { const align = /text-align\s*:\s*(left|center|right|justify)/i.exec(style); return align ? ` style="text-align:${align[1].toLowerCase()}"` : ""; });
+  html = html.replace(/\s+(?:href|src)\s*=\s*(["'])\s*(?!https?:|mailto:)[\s\S]*?\1/gi, "");
+  html = html.replace(/\s+(?:href|src)\s*=\s*(?!["'])(?:javascript:|data:)[^\s>]*/gi, "");
+  html = html.replace(/<(?!\/?(?:p|br|strong|b|em|i|u|s|ul|ol|li|h1|h2|h3|blockquote|a|div|span)\b)[^>]*>/gi, "");
+  return html;
+}
 async function meetingDirectory() {
   await validateMeetingsDatabase();
   const projectList = await projects();
@@ -178,8 +188,8 @@ async function meetingDirectory() {
 async function meetingList() {
   await validateMeetingsDatabase();
   const division = divisionId();
-  const [meetingRows, participantRows, momRows] = await Promise.all([
-    meetingRead("Meetings", "Q"), meetingRead("Meeting_Participants", "F"), meetingRead("Meeting_Minutes", "P")
+  const [meetingRows, participantRows, momRows, actionRows] = await Promise.all([
+    meetingRead("Meetings", "Q"), meetingRead("Meeting_Participants", "F"), meetingRead("Meeting_Minutes", "R"), meetingRead("Action_Items", "M")
   ]);
   const meetings = meetingRows.slice(1).filter(r => r[1] === division).map(r => ({
     id: r[0], division: r[1], projectId: r[2] || "", projectName: r[3] || "", title: r[4] || "",
@@ -192,9 +202,12 @@ async function meetingList() {
   const minutes = momRows.slice(1).filter(r => r[2] === division).map(r => ({
     id:r[0], meetingId:r[1] || "", division:r[2], projectId:r[3] || "", projectName:r[4] || "", title:r[5] || "",
     date:sheetDate(r[6]), summary:r[7] || "", discussion:r[8] || "", decisions:r[9] || "", status:r[10] || "",
-    pdfUrl:r[11] || "", createdBy:r[12] || "", createdAt:r[13] || "", updatedAt:r[14] || "", publishedAt:r[15] || ""
+    pdfUrl:r[11] || "", createdBy:r[12] || "", createdAt:r[13] || "", updatedAt:r[14] || "", publishedAt:r[15] || "",
+    meetingTime:r[16] || "", participants: (() => { try { return JSON.parse(r[17] || "[]"); } catch { return []; } })()
   }));
-  return { meetings, participants, minutes };
+  const allowedMom = new Set(minutes.map(m => m.id));
+  const actionItems = actionRows.slice(1).filter(r => r[2] === division && allowedMom.has(r[1])).map(r => ({ id:r[0], momId:r[1], title:r[3] || "", description:r[4] || "" }));
+  return { meetings, participants, minutes, actionItems };
 }
 async function createMeeting(user, p) {
   await validateMeetingsDatabase();
@@ -229,6 +242,41 @@ async function createMeeting(user, p) {
   if (!verify) fail("Meeting could not be verified after saving. Please refresh before retrying.", 500);
   return { id: meetingId, division, title, date, startTime: start, endTime: end, projectId, projectName, participants: requested };
 }
+async function createMeetingMinutes(user, p) {
+  await validateMeetingsDatabase();
+  const division = divisionId();
+  const title = clean(p.title);
+  const date = clean(p.date);
+  if (!title || title.length > 160) fail("MoM title is required (max 160 characters).");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail("A valid meeting date is required.");
+  const meetingId = clean(p.meetingId);
+  let projectId = clean(p.projectId), projectName = "", meetingTime = clean(p.meetingTime);
+  if (meetingId) {
+    const rows = (await meetingRead("Meetings", "Q")).slice(1);
+    const linked = rows.find(r => r[0] === meetingId && r[1] === division);
+    if (!linked) fail("Selected meeting was not found in this division.", 404);
+    if (!projectId) { projectId = linked[2] || ""; projectName = linked[3] || ""; }
+    if (!meetingTime) meetingTime = [sheetTime(linked[6]), sheetTime(linked[7])].filter(Boolean).join(" – ");
+    if (date !== sheetDate(linked[5])) fail("The MoM date must match the linked meeting date.");
+  }
+  if (projectId && !projectName) {
+    const project = (await projects()).find(x => x.id === projectId && (!x.status || x.status === "Active"));
+    if (!project) fail("Selected project was not found in this division.", 404);
+    projectName = project.name;
+  }
+  const people = Array.isArray(p.participants) ? [...new Set(p.participants.map(x => clean(x).slice(0,120)).filter(Boolean))] : [];
+  if (people.length > 50) fail("A MoM can have up to 50 participants.");
+  const items = Array.isArray(p.actionItems) ? p.actionItems.map(x => clean(x).slice(0,500)).filter(Boolean).slice(0,100) : [];
+  const now = (Date.now() - Date.UTC(1899,11,30)) / 86400000;
+  const momId = id("MOM");
+  const row = [momId, meetingId, division, projectId, projectName, title, toSerial(date), safeRichHtml(p.summary), safeRichHtml(p.discussion), safeRichHtml(p.decisions), "Draft", "", user.id, now, now, "", meetingTime, JSON.stringify(people)];
+  await meetingAppend("Meeting_Minutes", [row]);
+  if (items.length) await meetingAppend("Action_Items", items.map(text => [id("ACT"), momId, division, text, "", "", "", "", "", user.id, now, now, ""]));
+  const verify = (await meetingRead("Meeting_Minutes", "Q")).slice(1).some(r => r[0] === momId && r[2] === division);
+  if (!verify) fail("MoM could not be verified after saving. Please refresh before retrying.", 500);
+  return { id:momId, title, date, meetingId, meetingTime, projectId, projectName, participants:people, actionItems:items };
+}
+
 async function lastRow(name) {
   const rows = await read(`${quoteSheet(name)}!A:A`);
   return rows.length;
@@ -500,6 +548,7 @@ async function apiAction(user, action, p) {
     case "meetingDirectory": return meetingDirectory();
     case "meetingList": return meetingList();
     case "meetingCreate": return createMeeting(user, p);
+    case "meetingMinutesCreate": return createMeetingMinutes(user, p);
     case "divisionHealth": {
       admin(user);
       const results = [];

@@ -25,18 +25,18 @@ async function doLogin(){const b=$('#lb');b.disabled=true;
 function out(){api('logout').finally(()=>{sessionStorage.clear();location.reload()})}
 if(T)api('me').then(start).catch(()=>{});
 
-const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['usr','User Management','A'],['health','Data Connection','A']];
+const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['meetings','Meetings & Agenda'],['usr','User Management','A'],['health','Data Connection','A']];
 function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin'?['UI/UX','Digital Marketing','Designer','Admin']:[u.division]);
  if(u.role!=='Admin')ACTIVE_DIVISION=u.division;else if(!AVAILABLE_DIVISIONS.includes(ACTIVE_DIVISION))ACTIVE_DIVISION='UI/UX';
  sessionStorage.setItem('division',ACTIVE_DIVISION);$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
  $('#division-control').innerHTML=u.role==='Admin'?`<label class="sr-only" for="division-select">Division</label><select id="division-select" onchange="switchDivision(this.value)">${AVAILABLE_DIVISIONS.map(d=>`<option ${d===ACTIVE_DIVISION?'selected':''}>${esc(d)}</option>`).join('')}</select>`:'';
  $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||u.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');
  go('dash')}
-function switchDivision(d){if(U.role!=='Admin'||!AVAILABLE_DIVISIONS.includes(d))return;ACTIVE_DIVISION=d;sessionStorage.setItem('division',d);P=[];D=[];M=[];UL=[];UC=null;TDay=null;if(typeof meetingsState!=='undefined'){meetingsState.loaded=false;meetingsState.directory=null;meetingsState.meetings=[];meetingsState.participants=[];meetingsState.minutes=[];}
+function switchDivision(d){if(U.role!=='Admin'||!AVAILABLE_DIVISIONS.includes(d))return;ACTIVE_DIVISION=d;sessionStorage.setItem('division',d);P=[];D=[];M=[];UL=[];UC=null;TDay=null;if(typeof meetingsState!=='undefined'){meetingsState.loaded=false;meetingsState.directory=null;meetingsState.meetings=[];meetingsState.participants=[];meetingsState.minutes=[];meetingsState.actionItems=[];}
  $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||U.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');go('dash')}
 
-async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+p));
- const n=NAV.find(x=>x[0]==p);$('#title').textContent=n[1];$('#sub').textContent=(U.role=='Admin'?'All members':'My data')+' · '+ACTIVE_DIVISION;
+async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+(p==='mom'?'meetings':p)));
+ const n=NAV.find(x=>x[0]==p);$('#title').textContent=n?n[1]:(p==='mom'?'Meeting Minutes':p);$('#sub').textContent=(U.role=='Admin'?'All members':'My data')+' · '+ACTIVE_DIVISION;
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';try{await V[p]()}catch(e){$('#view').innerHTML='';toast(msg(e),1)}}
 
 function modal(t,b,ok,fn){$('#m').innerHTML=`<div class="mb"><h3>${t}</h3>${b}<div class="mf"><button class="btn2" onclick="cm()">Cancel</button><button class="btn" id="mo">${ok}</button></div></div>`;$('#m').hidden=false;
@@ -260,6 +260,8 @@ var meetingsState = {
   meetings: [],
   participants: [],
   minutes: [],
+  actionItems: [],
+  draftParticipants: [],
   directory: null,
   view: 'month',
   cursor: today(),
@@ -356,7 +358,7 @@ function meetingsRenderCalendar() {
 function meetingsEventMarkup(entry) {
   var item = entry.item || {};
   var label = entry.kind === 'Meeting' ? ((item.startTime || '') + (item.endTime ? ' – ' + item.endTime : '')) : 'Minutes';
-  var onclick = entry.kind === 'Meeting' ? 'meetingsShowDetails(\'' + meetingsEsc(item.id) + '\')' : '';
+  var onclick = entry.kind === 'Meeting' ? 'meetingsShowDetails(\'' + meetingsEsc(item.id) + '\')' : 'momShowDetails(\'' + meetingsEsc(item.id) + '\')';
   return '<button type="button" class="meet-event" ' + (onclick ? 'onclick="' + onclick + '"' : 'disabled') + '>' +
     '<span class="meet-event-kind">' + meetingsEsc(entry.kind) + '</span><b>' + meetingsEsc(entry.title) + '</b><small>' + meetingsEsc(label) + '</small></button>';
 }
@@ -434,6 +436,7 @@ async function meetingsLoad(force) {
     meetingsState.meetings = Array.isArray(result.meetings) ? result.meetings : [];
     meetingsState.participants = Array.isArray(result.participants) ? result.participants : [];
     meetingsState.minutes = Array.isArray(result.minutes) ? result.minutes : [];
+    meetingsState.actionItems = Array.isArray(result.actionItems) ? result.actionItems : [];
     meetingsState.loaded = true;
   } finally {
     meetingsState.loading = false;
@@ -526,7 +529,7 @@ function meetingsRenderPage() {
   var view = document.getElementById('view');
   if (!view) return;
   view.innerHTML = '<div class="meet-toolbar">' +
-    '<div class="meet-toolbar-left"><button class="btn" type="button" onclick="meetingsOpenCreate(meetingsState.selectedDate)">+ Create Meeting</button>' +
+    '<div class="meet-toolbar-left"><button class="btn" type="button" onclick="meetingsOpenCreate(meetingsState.selectedDate)">+ Create Meeting</button><button class="btn2" type="button" onclick="go(\'mom\')">Meeting Minutes</button>' +
     '<span class="meet-division-label">' + meetingsEsc(ACTIVE_DIVISION) + ' division</span></div>' +
     '<div class="meet-toolbar-right"><button class="btn2" type="button" onclick="meetingsReload()">Refresh</button></div></div>' +
     '<section class="meet-calendar-card card"><div class="meet-cal-toolbar"><div class="meet-cal-nav"><button class="btn2" type="button" onclick="meetingsNavigate(-1)" aria-label="Previous period">‹</button><b id="meetings-period-title"></b><button class="btn2" type="button" onclick="meetingsNavigate(1)" aria-label="Next period">›</button><button class="btn2" type="button" onclick="meetingsGoToday()">Today</button></div>' +
@@ -561,3 +564,39 @@ V.meetings = async function () {
     toast(msg(error), 1);
   }
 };
+
+
+/* Meeting Minutes: hybrid linked/standalone creation, rich text, and print-to-PDF export. */
+meetingsState.actionItems = meetingsState.actionItems || [];
+function momRichEditor(id, label, value) {
+  return '<div class="mom-field"><label>'+label+'</label><div class="mom-toolbar">'+
+    '<button type="button" onmousedown="event.preventDefault()" onclick="momCmd(\'bold\')"><b>B</b></button><button type="button" onmousedown="event.preventDefault()" onclick="momCmd(\'italic\')"><i>I</i></button><button type="button" onmousedown="event.preventDefault()" onclick="momCmd(\'underline\')"><u>U</u></button><button type="button" onmousedown="event.preventDefault()" onclick="momCmd(\'insertUnorderedList\')">• List</button><button type="button" onmousedown="event.preventDefault()" onclick="momCmd(\'insertOrderedList\')">1. List</button><button type="button" onmousedown="event.preventDefault()" onclick="momFormat(\'h2\')">Heading</button><button type="button" onmousedown="event.preventDefault()" onclick="momFormat(\'p\')">Paragraph</button><button type="button" onmousedown="event.preventDefault()" onclick="momCmd(\'justifyLeft\')">Left</button><button type="button" onmousedown="event.preventDefault()" onclick="momCmd(\'justifyCenter\')">Center</button><button type="button" onmousedown="event.preventDefault()" onclick="momLink()">Link</button></div>'+
+    '<div id="'+id+'" class="mom-editor" contenteditable="true" data-placeholder="Write '+label.toLowerCase()+'...">'+(value||'')+'</div></div>';
+}
+function momCmd(command){document.execCommand(command,false,null)}
+function momFormat(tag){document.execCommand('formatBlock',false,tag)}
+function momLink(){var url=prompt('Enter link URL');if(url&&/^https?:\/\//i.test(url))document.execCommand('createLink',false,url)}
+function momAddParticipant(){var input=document.getElementById('mom-person-input');if(!input)return;var name=input.value.trim().replace(/\s+/g,' ');if(!name)return;if(meetingsState.draftParticipants.some(x=>x.toLowerCase()===name.toLowerCase()))return toast('Participant already added.',1);if(meetingsState.draftParticipants.length>=50)return toast('Maximum 50 participants.',1);meetingsState.draftParticipants.push(name.slice(0,120));input.value='';momRenderPeople();input.focus()}
+function momRemoveParticipant(i){meetingsState.draftParticipants.splice(i,1);momRenderPeople()}
+function momRenderPeople(){var host=document.getElementById('mom-people');if(!host)return;host.innerHTML=meetingsState.draftParticipants.map((n,i)=>'<span class="meet-participant-chip">'+meetingsEsc(n)+' <button type="button" onclick="momRemoveParticipant('+i+')">×</button></span>').join('')||'<span class="meet-participant-empty">No participants added yet.</span>'}
+function momAddAction(){var input=document.getElementById('mom-action-input');if(!input)return;var v=input.value.trim();if(!v)return;var host=document.getElementById('mom-action-list');var row=document.createElement('div');row.className='mom-action-row';row.innerHTML='<span></span><button type="button" aria-label="Remove action item">×</button>';row.querySelector('span').textContent=v;row.querySelector('button').onclick=()=>row.remove();host.appendChild(row);input.value='';input.focus()}
+function momReadActions(){return Array.from(document.querySelectorAll('#mom-action-list .mom-action-row span')).map(x=>x.textContent.trim()).filter(Boolean)}
+async function momOpenCreate(date){
+  try{await meetingsLoadDirectory();meetingsState.draftParticipants=[];var linkedOptions=meetingsState.meetings.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(m=>'<option value="'+meetingsEsc(m.id)+'">'+meetingsEsc(m.title+' · '+m.date)+'</option>').join('');var projects=meetingsState.directory.projects||[];
+  var body='<div class="mom-form">'+
+    '<label class="mom-field">Link to existing meeting (optional)<select id="mom-meeting" onchange="momApplyMeeting(this.value)"><option value="">Standalone MoM — no meeting linked</option>'+linkedOptions+'</select></label>'+ 
+    '<label class="mom-field">MoM title<input id="mom-title" maxlength="160" placeholder="e.g. Project Discussion – Client Name" required></label>'+ 
+    '<div class="mom-grid"><label class="mom-field">Meeting date<input id="mom-date" type="date" value="'+meetingsEsc(date||today())+'" required></label><label class="mom-field">Meeting time<input id="mom-time" placeholder="e.g. 09:00 – 10:00"></label><label class="mom-field">Project (optional)<select id="mom-project"><option value="">No project</option>'+projects.map(p=>'<option value="'+meetingsEsc(p.id)+'">'+meetingsEsc(p.name)+'</option>').join('')+'</select></label></div>'+ 
+    '<div class="mom-field"><label>Participants</label><div class="meet-participant-entry"><input id="mom-person-input" maxlength="120" placeholder="Enter participant name" onkeydown="if(event.key===\'Enter\'){event.preventDefault();momAddParticipant()}"><button type="button" class="btn2" onclick="momAddParticipant()">Add</button></div><div id="mom-people" class="meet-participant-chips"><span class="meet-participant-empty">No participants added yet.</span></div></div>'+ 
+    momRichEditor('mom-summary','Summary','')+momRichEditor('mom-discussion','Discussion','')+momRichEditor('mom-decisions','Decisions','')+
+    '<div class="mom-field"><label>Action Items</label><div class="meet-participant-entry"><input id="mom-action-input" placeholder="Add a follow-up item" onkeydown="if(event.key===\'Enter\'){event.preventDefault();momAddAction()}"><button type="button" class="btn2" onclick="momAddAction()">Add</button></div><div id="mom-action-list" class="mom-action-list"></div><small class="muted">No assignee, target date, priority, or status required.</small></div></div>';
+  modal('Create Meeting Minutes',body,'Save MoM',async function(){var title=document.getElementById('mom-title').value.trim(),dateValue=document.getElementById('mom-date').value;if(!title||!dateValue)throw new Error('Please complete the MoM title and meeting date.');var payload={meetingId:document.getElementById('mom-meeting').value,title:title,date:dateValue,meetingTime:document.getElementById('mom-time').value.trim(),projectId:document.getElementById('mom-project').value,participants:meetingsState.draftParticipants.slice(),summary:document.getElementById('mom-summary').innerHTML,discussion:document.getElementById('mom-discussion').innerHTML,decisions:document.getElementById('mom-decisions').innerHTML,actionItems:momReadActions()};await api('meetingMinutesCreate',payload);meetingsState.loaded=false;await meetingsLoad(true);meetingsState.cursor=dateValue;meetingsState.selectedDate=dateValue;meetingsRenderPage();toast('Meeting minutes saved.');});
+  enhanceControls(document.getElementById('m'));
+  }catch(e){toast(msg(e),1)}
+}
+function momApplyMeeting(id){var date=document.getElementById('mom-date');date.disabled=!!id;if(date._dateUI)date._dateUI.trigger.disabled=!!id;if(!id){document.getElementById('mom-time').disabled=false;document.getElementById('mom-time').value='';meetingsState.draftParticipants=[];momRenderPeople();return;}var m=meetingsState.meetings.find(x=>x.id===id);if(!m)return;document.getElementById('mom-title').value=m.title;date.value=m.date;document.getElementById('mom-time').value=m.startTime&&m.endTime?m.startTime+' – '+m.endTime:'';document.getElementById('mom-time').disabled=true;document.getElementById('mom-project').value=m.projectId||'';meetingsState.draftParticipants=meetingsState.participants.filter(p=>p.meetingId===id).map(p=>p.name);momRenderPeople()}
+function momShowDetails(id){var m=meetingsState.minutes.find(x=>x.id===id);if(!m)return;var acts=meetingsState.actionItems.filter(x=>x.momId===id);var people=Array.isArray(m.participants)?m.participants:[];var html='<article class="mom-print"><div class="mom-print-head"><small>MEETING MINUTES</small><h1>'+meetingsEsc(m.title)+'</h1><p>'+meetingsEsc(meetingsFormatDate(m.date))+(m.meetingTime?' · '+meetingsEsc(m.meetingTime):'')+(m.projectName?' · '+meetingsEsc(m.projectName):'')+'</p></div><h3>Participants</h3><p>'+meetingsEsc(people.join(', ')||'—')+'</p>'+momPrintSection('Summary',m.summary)+momPrintSection('Discussion',m.discussion)+momPrintSection('Decisions',m.decisions)+'<h3>Action Items</h3><ul>'+acts.map(x=>'<li>'+meetingsEsc(x.title)+'</li>').join('')+'</ul></article>';var shell='<div class="mom-detail-actions"><button type="button" class="btn" onclick="momExport(\''+meetingsEsc(id)+'\')">Export PDF</button></div>'+html;modal(m.title,shell,'Close',async function(){});var ok=document.getElementById('mo');if(ok)ok.textContent='Close'}
+function momPrintSection(title,html){return '<h3>'+title+'</h3><div class="mom-rich-output">'+(html||'<p>—</p>')+'</div>'}
+function momExport(id){var m=meetingsState.minutes.find(x=>x.id===id);if(!m)return;var acts=meetingsState.actionItems.filter(x=>x.momId===id);var people=Array.isArray(m.participants)?m.participants:[];var doc='<!doctype html><html><head><meta charset="utf-8"><title>'+meetingsEsc(m.title)+'</title><style>body{font:14px Arial,sans-serif;color:#202938;line-height:1.6;margin:36px}h1{font-size:24px;margin:6px 0}h2{font-size:16px;margin:26px 0 8px;border-bottom:1px solid #d9e0ea;padding-bottom:6px}.meta{color:#64748b}.brand{font-size:11px;letter-spacing:1.5px;color:#2563a8;font-weight:bold}.content{overflow-wrap:anywhere}li{margin:5px 0}@media print{body{margin:18mm}h2{break-after:avoid}li,p{orphans:3;widows:3}}</style></head><body><div class="brand">MEETING MINUTES</div><h1>'+meetingsEsc(m.title)+'</h1><p class="meta">'+meetingsEsc(meetingsFormatDate(m.date))+(m.meetingTime?' · '+meetingsEsc(m.meetingTime):'')+(m.projectName?' · '+meetingsEsc(m.projectName):'')+'</p><h2>Participants</h2><p>'+meetingsEsc(people.join(', ')||'—')+'</p><h2>Summary</h2><div class="content">'+(m.summary||'—')+'</div><h2>Discussion</h2><div class="content">'+(m.discussion||'—')+'</div><h2>Decisions</h2><div class="content">'+(m.decisions||'—')+'</div><h2>Action Items</h2><ul>'+acts.map(x=>'<li>'+meetingsEsc(x.title)+'</li>').join('')+'</ul></body></html>';var w=window.open('','_blank');if(!w)return toast('Please allow pop-ups to export the PDF.',1);w.document.open();w.document.write(doc);w.document.close();w.focus();setTimeout(function(){w.print()},350)}
+V.mom = async function(){await meetingsLoad(false);var rows=meetingsState.minutes.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));var html='<div class="meet-toolbar"><div class="meet-toolbar-left"><button class="btn2" onclick="go(\'meetings\')">← Calendar & Meetings</button><button class="btn" onclick="momOpenCreate(meetingsState.selectedDate)">+ Create MoM</button><span class="meet-division-label">'+meetingsEsc(ACTIVE_DIVISION)+' division</span></div><button class="btn2" onclick="meetingsReloadMom()">Refresh</button></div><section class="card mom-list-card"><div class="meet-list-head"><div><b>Meeting Minutes</b><small>Linked and standalone minutes</small></div></div>'+(rows.length?rows.map(m=>'<button class="meet-list-row" onclick="momShowDetails(\''+meetingsEsc(m.id)+'\')"><span class="meet-list-date"><b>'+meetingsEsc(String(m.date||'').slice(8,10))+'</b><small>'+meetingsEsc(String(m.date||'').slice(0,7))+'</small></span><span class="meet-list-main"><b>'+meetingsEsc(m.title)+'</b><small>'+(m.meetingId?'Linked meeting':'Standalone')+' · '+meetingsEsc(m.projectName||'No project')+'</small></span><span class="meet-list-time">'+meetingsEsc(m.status||'Draft')+'</span></button>').join(''):'<div class="empty">No meeting minutes yet.</div>')+'</section>';document.getElementById('view').innerHTML=html;};
+async function meetingsReloadMom(){meetingsState.loaded=false;await meetingsLoad(true);V.mom()}
