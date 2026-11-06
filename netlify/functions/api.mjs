@@ -1,8 +1,24 @@
 import { google } from "googleapis";
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const TZ = "Asia/Jakarta";
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const DIVISIONS = {
+  "UI/UX": process.env.SPREADSHEET_ID_UI_UX || process.env.SPREADSHEET_ID,
+  "Digital Marketing": process.env.SPREADSHEET_ID_DIGITAL_MARKETING,
+  "Designer": process.env.SPREADSHEET_ID_DESIGNER,
+  "Admin": process.env.SPREADSHEET_ID_ADMIN
+};
+const DIVISION_NAMES = Object.keys(DIVISIONS);
+const DEFAULT_ACTIVITY_TYPES = {
+  "Digital Marketing": ["Aplikas","MBPS","MECS","Phincon","Phintech","MSS","Phintraco Group","Effist","Saldoo","emeteraiku","PNK","Shanata","Internal","RaiseCall","Natha Gadai","Nathara","Natharu","[POC] BSN","[POC] GYS","Onboarding","Others","Phintas - Profits","Trans Food","Soraba"],
+  "Designer": ["Aplikas","MBPS","MECS","Phincon","Phintech","MSS","Phintraco Group","Effist","Saldoo","emeteraiku","PNK","Shanata","Internal","RaiseCall","Natha Gadai","Nathara","Branding","HR","Other","Special Request","SEAITI","Natha Farm","[POC] BSN","[POC] GYS","Onboarding","Others","Phintas - Profits","Trans Food"],
+  "Admin": ["Aplikas","MBPS","MECS","Phincon","Phintech","MSS","Phintraco Group","Effist","Saldoo","emeteraiku","PNK","Shanata","Internal","RaiseCall","Natha Gadai","Nathara","Soraba","Natharu","[POC] BSN","[POC] GYS","Onboarding","Others","Phintas - Profits","Trans Food"]
+};
+
+const requestContext = new AsyncLocalStorage();
+function spreadsheetId() { const id = requestContext.getStore()?.spreadsheetId; if (!id) fail("Division database context is missing.",500); return id; }
+function divisionFor(id) { return DIVISION_NAMES.find(name => DIVISIONS[name] === id); }
 const RESERVED = ["Users", "Projects", "Audit_Log", "2026 Master All", "Summary 2026", "Master chart"];
 const HDR = ["Day & Date", "Team Name", "Activity Type (Nama PT/Project)", "Task / Deliverables", "Time Allocated (% - 100% for 1 Day)"];
 const HEADERS = {
@@ -12,7 +28,7 @@ const HEADERS = {
 };
 
 let sheetsClient;
-let sheetMeta;
+const sheetMeta = new Map();
 
 function clean(v) {
   return String(v ?? "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
@@ -24,7 +40,7 @@ function fail(message, status = 400, code) {
   throw e;
 }
 function requiredEnv() {
-  if (!SPREADSHEET_ID) fail("Missing SPREADSHEET_ID environment variable.", 500);
+  if (!spreadsheetId()) fail("Missing spreadsheet configuration for this division.", 500);
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) fail("Missing GOOGLE_SERVICE_ACCOUNT_JSON environment variable.", 500);
   if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) fail("SESSION_SECRET must contain at least 32 characters.", 500);
 }
@@ -42,29 +58,31 @@ function client() {
   return sheetsClient;
 }
 async function metadata(refresh = false) {
-  if (sheetMeta && !refresh) return sheetMeta;
-  const r = await client().spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-  sheetMeta = new Map((r.data.sheets || []).map(s => [s.properties.title, {
+  const db = spreadsheetId();
+  if (sheetMeta.has(db) && !refresh) return sheetMeta.get(db);
+  const r = await client().spreadsheets.get({ spreadsheetId: db });
+  const meta = new Map((r.data.sheets || []).map(s => [s.properties.title, {
     sheetId: s.properties.sheetId,
     title: s.properties.title,
     rowCount: s.properties.gridProperties?.rowCount || 1000
   }]));
-  return sheetMeta;
+  sheetMeta.set(db, meta);
+  return meta;
 }
 async function ensureTab(name, header) {
   let meta = await metadata();
   if (!meta.has(name)) {
     await client().spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       requestBody: { requests: [{ addSheet: { properties: { title: name } } }] }
     });
-    sheetMeta = null;
+    sheetMeta.delete(spreadsheetId());
     meta = await metadata(true);
   }
   const values = await read(`${quoteSheet(name)}!A1:${columnLetter(header.length)}1`);
   if (!values.length || values.every(v => v === "")) {
     await client().spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       range: `${quoteSheet(name)}!A1:${columnLetter(header.length)}1`,
       valueInputOption: "RAW",
       requestBody: { values: [header] }
@@ -80,7 +98,7 @@ function columnLetter(n) {
 }
 async function read(range, options = {}) {
   const r = await client().spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
+    spreadsheetId: spreadsheetId(),
     range,
     valueRenderOption: options.valueRenderOption || "UNFORMATTED_VALUE",
     dateTimeRenderOption: "SERIAL_NUMBER"
@@ -89,16 +107,176 @@ async function read(range, options = {}) {
 }
 async function write(range, values, input = "RAW") {
   return client().spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID, range, valueInputOption: input,
+    spreadsheetId: spreadsheetId(), range, valueInputOption: input,
     requestBody: { values }
   });
 }
 async function append(range, values, input = "RAW") {
   return client().spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID, range, valueInputOption: input,
+    spreadsheetId: spreadsheetId(), range, valueInputOption: input,
     insertDataOption: "INSERT_ROWS", requestBody: { values }
   });
 }
+
+// Meetings data lives in one central spreadsheet. Division access is enforced
+// by the authenticated request context, never by a client-supplied DivisionID.
+const MEETING_HEADERS = {
+  Meetings: ["MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MeetingTitle", "MeetingDate", "StartTime", "EndTime", "MeetingType", "Location", "MeetingLink", "Agenda", "Description", "Status", "CreatedBy", "CreatedAt", "UpdatedAt"],
+  Meeting_Participants: ["ParticipantID", "MeetingID", "DivisionID", "ParticipantName", "Attendance", "CreatedAt"],
+  Meeting_Minutes: ["MoMID", "MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MoMTitle", "MeetingDate", "Summary", "Discussion", "Decisions", "Status", "PDFURL", "CreatedBy", "CreatedAt", "UpdatedAt", "PublishedAt", "MeetingTime", "Participants"],
+  Action_Items: ["ActionItemID", "MoMID", "DivisionID", "Title", "Description", "AssignedTo", "Priority", "DueDate", "Status", "CreatedBy", "CreatedAt", "UpdatedAt", "CompletedAt"],
+  Action_History: ["HistoryID", "ActionItemID", "DivisionID", "Action", "OldValue", "NewValue", "ChangedBy", "ChangedAt", "Notes"]
+};
+function meetingsSpreadsheetId() {
+  const id = clean(process.env.MEETINGS_SPREADSHEET_ID);
+  if (!id) fail("Meetings database is not configured. Set MEETINGS_SPREADSHEET_ID for this deploy context.", 503, "MEETINGS_NOT_CONFIGURED");
+  return id;
+}
+async function meetingRead(tab, endColumn) {
+  const db = meetingsSpreadsheetId();
+  const r = await client().spreadsheets.values.get({ spreadsheetId: db, range: `${quoteSheet(tab)}!A:${endColumn}`, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "SERIAL_NUMBER" });
+  return r.data.values || [];
+}
+async function meetingAppend(tab, values) {
+  return client().spreadsheets.values.append({ spreadsheetId: meetingsSpreadsheetId(), range: `${quoteSheet(tab)}!A:${columnLetter(MEETING_HEADERS[tab].length)}`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values } });
+}
+async function validateMeetingsDatabase() {
+  const db = meetingsSpreadsheetId();
+  const r = await client().spreadsheets.get({ spreadsheetId: db });
+  const tabs = new Map((r.data.sheets || []).map(x => [x.properties.title, x.properties.sheetId]));
+  const issues = [];
+  for (const [tab, expected] of Object.entries(MEETING_HEADERS)) {
+    if (!tabs.has(tab)) { issues.push(`Missing sheet: ${tab}`); continue; }
+    const actual = (await meetingRead(tab, columnLetter(expected.length)))[0] || [];
+    const normalized = expected.map((_, i) => clean(actual[i]));
+    if (expected.some((h, i) => normalized[i] !== h)) issues.push(`Header mismatch: ${tab}`);
+  }
+  if (issues.length) fail(`Meetings database validation failed: ${issues.join("; ")}`, 409, "MEETINGS_SCHEMA_INVALID");
+  return { ok: true, tabs: Object.keys(MEETING_HEADERS), spreadsheetIdConfigured: true };
+}
+function divisionId() {
+  const division = requestContext.getStore()?.division;
+  if (!DIVISIONS[division]) fail("Active division context is invalid.", 403);
+  return division;
+}
+function sheetDate(v) { return serialToDate(v) || String(v || ""); }
+function sheetTime(v) {
+  if (typeof v === "number") {
+    const minutes = Math.round(v * 24 * 60);
+    return `${String(Math.floor(minutes / 60)).padStart(2,"0")}:${String(minutes % 60).padStart(2,"0")}`;
+  }
+  return String(v || "");
+}
+function safeRichHtml(value) {
+  let html = String(value || "").slice(0, 50000);
+  html = html.replace(/<(script|style|iframe|object|embed|form|svg|math)[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
+  html = html.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  html = html.replace(/\s+style\s*=\s*(["'])(.*?)\1/gi, (_, q, style) => { const align = /text-align\s*:\s*(left|center|right|justify)/i.exec(style); return align ? ` style="text-align:${align[1].toLowerCase()}"` : ""; });
+  html = html.replace(/\s+(?:href|src)\s*=\s*(["'])\s*(?!https?:|mailto:)[\s\S]*?\1/gi, "");
+  html = html.replace(/\s+(?:href|src)\s*=\s*(?!["'])(?:javascript:|data:)[^\s>]*/gi, "");
+  html = html.replace(/<(?!\/?(?:p|br|strong|b|em|i|u|s|ul|ol|li|h1|h2|h3|blockquote|a|div|span)\b)[^>]*>/gi, "");
+  return html;
+}
+async function meetingDirectory() {
+  await validateMeetingsDatabase();
+  const projectList = await projects();
+  return {
+    division: divisionId(),
+    projects: projectList.filter(x => !x.status || x.status === "Active").map(x => ({ id: x.id, name: x.name }))
+  };
+}
+async function meetingList() {
+  await validateMeetingsDatabase();
+  const division = divisionId();
+  const [meetingRows, participantRows, momRows, actionRows] = await Promise.all([
+    meetingRead("Meetings", "Q"), meetingRead("Meeting_Participants", "F"), meetingRead("Meeting_Minutes", "R"), meetingRead("Action_Items", "M")
+  ]);
+  const meetings = meetingRows.slice(1).filter(r => r[1] === division).map(r => ({
+    id: r[0], division: r[1], projectId: r[2] || "", projectName: r[3] || "", title: r[4] || "",
+    date: sheetDate(r[5]), startTime: sheetTime(r[6]), endTime: sheetTime(r[7]), type: r[8] || "",
+    location: r[9] || "", link: r[10] || "", agenda: r[11] || "", description: r[12] || "", status: r[13] || "",
+    createdBy: r[14] || "", createdAt: r[15] || "", updatedAt: r[16] || ""
+  }));
+  const allowed = new Set(meetings.map(m => m.id));
+  const participants = participantRows.slice(1).filter(r => r[2] === division && allowed.has(r[1])).map(r => ({ id:r[0], meetingId:r[1], name:r[3] || "", attendance:r[4] || "Invited" }));
+  const minutes = momRows.slice(1).filter(r => r[2] === division).map(r => ({
+    id:r[0], meetingId:r[1] || "", division:r[2], projectId:r[3] || "", projectName:r[4] || "", title:r[5] || "",
+    date:sheetDate(r[6]), summary:r[7] || "", discussion:r[8] || "", decisions:r[9] || "", status:r[10] || "",
+    pdfUrl:r[11] || "", createdBy:r[12] || "", createdAt:r[13] || "", updatedAt:r[14] || "", publishedAt:r[15] || "",
+    meetingTime:r[16] || "", participants: (() => { try { return JSON.parse(r[17] || "[]"); } catch { return []; } })()
+  }));
+  const allowedMom = new Set(minutes.map(m => m.id));
+  const actionItems = actionRows.slice(1).filter(r => r[2] === division && allowedMom.has(r[1])).map(r => ({ id:r[0], momId:r[1], title:r[3] || "", description:r[4] || "" }));
+  return { meetings, participants, minutes, actionItems };
+}
+async function createMeeting(user, p) {
+  await validateMeetingsDatabase();
+  const division = divisionId();
+  const title = clean(p.title);
+  const date = clean(p.date);
+  const start = clean(p.startTime), end = clean(p.endTime);
+  if (!title || title.length > 160) fail("Meeting title is required (max 160 characters).");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail("A valid meeting date is required.");
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || end <= start) fail("Please provide a valid start and end time.");
+  const projectId = clean(p.projectId);
+  let projectName = "";
+  if (projectId) {
+    const project = (await projects()).find(x => x.id === projectId && (!x.status || x.status === "Active"));
+    if (!project) fail("Selected project was not found in this division.", 404);
+    projectName = project.name;
+  }
+  // Participants are free-text names (internal members, clients, or external guests).
+  // They are stored only in the Meetings database and are never looked up in Users.
+  const requested = Array.isArray(p.participants)
+    ? [...new Set(p.participants.map(x => clean(x).slice(0, 120)).filter(Boolean))]
+    : [];
+  if (requested.length > 50) fail("A meeting can have up to 50 participants.");
+  const now = (Date.now() - Date.UTC(1899,11,30)) / 86400000;
+  const meetingId = id("MTG");
+  const row = [meetingId, division, projectId, projectName, title, toSerial(date), start, end,
+    clean(p.type) || "Online", clean(p.location), clean(p.link), String(p.agenda || "").trim(),
+    String(p.description || "").trim(), "Scheduled", user.id, now, now];
+  await meetingAppend("Meetings", [row]);
+  if (requested.length) await meetingAppend("Meeting_Participants", requested.map(name => [id("MTP"), meetingId, division, name, "Invited", now]));
+  const verify = (await meetingRead("Meetings", "Q")).slice(1).some(r => r[0] === meetingId && r[1] === division);
+  if (!verify) fail("Meeting could not be verified after saving. Please refresh before retrying.", 500);
+  return { id: meetingId, division, title, date, startTime: start, endTime: end, projectId, projectName, participants: requested };
+}
+async function createMeetingMinutes(user, p) {
+  await validateMeetingsDatabase();
+  const division = divisionId();
+  const title = clean(p.title);
+  const date = clean(p.date);
+  if (!title || title.length > 160) fail("MoM title is required (max 160 characters).");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail("A valid meeting date is required.");
+  const meetingId = clean(p.meetingId);
+  let projectId = clean(p.projectId), projectName = "", meetingTime = clean(p.meetingTime);
+  if (meetingId) {
+    const rows = (await meetingRead("Meetings", "Q")).slice(1);
+    const linked = rows.find(r => r[0] === meetingId && r[1] === division);
+    if (!linked) fail("Selected meeting was not found in this division.", 404);
+    if (!projectId) { projectId = linked[2] || ""; projectName = linked[3] || ""; }
+    if (!meetingTime) meetingTime = [sheetTime(linked[6]), sheetTime(linked[7])].filter(Boolean).join(" – ");
+    if (date !== sheetDate(linked[5])) fail("The MoM date must match the linked meeting date.");
+  }
+  if (projectId && !projectName) {
+    const project = (await projects()).find(x => x.id === projectId && (!x.status || x.status === "Active"));
+    if (!project) fail("Selected project was not found in this division.", 404);
+    projectName = project.name;
+  }
+  const people = Array.isArray(p.participants) ? [...new Set(p.participants.map(x => clean(x).slice(0,120)).filter(Boolean))] : [];
+  if (people.length > 50) fail("A MoM can have up to 50 participants.");
+  const items = Array.isArray(p.actionItems) ? p.actionItems.map(x => clean(x).slice(0,500)).filter(Boolean).slice(0,100) : [];
+  const now = (Date.now() - Date.UTC(1899,11,30)) / 86400000;
+  const momId = id("MOM");
+  const row = [momId, meetingId, division, projectId, projectName, title, toSerial(date), safeRichHtml(p.summary), safeRichHtml(p.discussion), safeRichHtml(p.decisions), "Draft", "", user.id, now, now, "", meetingTime, JSON.stringify(people)];
+  await meetingAppend("Meeting_Minutes", [row]);
+  if (items.length) await meetingAppend("Action_Items", items.map(text => [id("ACT"), momId, division, text, "", "", "", "", "", user.id, now, now, ""]));
+  const verify = (await meetingRead("Meeting_Minutes", "Q")).slice(1).some(r => r[0] === momId && r[2] === division);
+  if (!verify) fail("MoM could not be verified after saving. Please refresh before retrying.", 500);
+  return { id:momId, title, date, meetingId, meetingTime, projectId, projectName, participants:people, actionItems:items };
+}
+
 async function lastRow(name) {
   const rows = await read(`${quoteSheet(name)}!A:A`);
   return rows.length;
@@ -140,10 +318,10 @@ function checkPassword(p) {
   if (String(p || "").length < 8) fail("Password must be at least 8 characters.");
 }
 function publicUser(x) {
-  return { id: x.id, username: x.username, fullName: x.fullName, sheet: x.sheet, role: x.role };
+  return { id: x.id, username: x.username, fullName: x.fullName, sheet: x.sheet, role: x.role, division: x.division || divisionFor(spreadsheetId()) };
 }
 async function users() {
-  const rows = await read("'Users'!A2:H");
+  const rows = (await read("'Users'!A:H")).slice(1);
   return rows.map((r, i) => ({
     row: i + 2, id: r[0] || "", username: r[1] || "", fullName: r[2] || "",
     sheet: r[3] || "", role: r[4] || "", status: r[5] || "",
@@ -151,12 +329,12 @@ async function users() {
   })).filter(x => x.id || x.username);
 }
 async function projects() {
-  const rows = await read("'Projects'!A2:E");
+  const rows = (await read("'Projects'!A:E")).slice(1);
   return rows.map(r => ({ id: r[0] || "", name: r[1] || "", status: r[2] || "", by: r[3] || "" }))
     .filter(x => x.id || x.name);
 }
 async function memberRows(sheet) {
-  return read(`${quoteSheet(sheet)}!A2:E`);
+  return read(`${quoteSheet(sheet)}!A:E`).then(rows => rows.slice(1));
 }
 async function logAction(user, action, date, previous, next) {
   await append("'Audit_Log'!A:H", [[
@@ -184,7 +362,7 @@ async function authUser(token) {
   return user;
 }
 function createToken(user) {
-  const body = Buffer.from(JSON.stringify({ uid: user.id, exp: Date.now() + 6 * 60 * 60 * 1000 })).toString("base64url");
+  const body = Buffer.from(JSON.stringify({ uid: user.id, division: user.division || divisionFor(spreadsheetId()), exp: Date.now() + 6 * 60 * 60 * 1000 })).toString("base64url");
   const sig = crypto.createHmac("sha256", process.env.SESSION_SECRET).update(body).digest("base64url");
   return `${body}.${sig}`;
 }
@@ -197,15 +375,15 @@ async function ensureMemberSheet(name) {
   let meta = await metadata();
   if (!meta.has(name)) {
     await client().spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       requestBody: { requests: [{ addSheet: { properties: { title: name } } }] }
     });
-    sheetMeta = null;
+    sheetMeta.delete(spreadsheetId());
     await metadata(true);
     await write(`${quoteSheet(name)}!A1:E1`, [HDR]);
     const m = (await metadata()).get(name);
     await client().spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId(),
       requestBody: { requests: [{ updateSheetProperties: {
         properties: { sheetId: m.sheetId, gridProperties: { frozenRowCount: 1 } },
         fields: "gridProperties.frozenRowCount"
@@ -219,14 +397,18 @@ async function setup(payload) {
   await ensureTab("Projects", HEADERS.Projects);
   await ensureTab("Audit_Log", HEADERS.Audit_Log);
   const list = await users();
-  if (!list.length) {
+  if (!list.length && divisionFor(spreadsheetId()) === "Admin" && payload.adminPassword) {
     const password = String(payload.adminPassword || "");
     checkPassword(password);
     const salt = uuid();
     await append("'Users'!A:H", [[id("U"), "admin", "Administrator", "", "Admin", "Active", salt, hashPassword(password, salt)]]);
   }
   const existingProjects = await projects();
-  if (!existingProjects.length) {
+  if (!existingProjects.length && DEFAULT_ACTIVITY_TYPES[divisionFor(spreadsheetId())]) {
+    const sourceNames = DEFAULT_ACTIVITY_TYPES[divisionFor(spreadsheetId())];
+    await append("'Projects'!A:E", sourceNames.map(n => [id("P"), n, "Active", "source-dropdown", (Date.now()-Date.UTC(1899,11,30))/86400000]));
+  }
+  if (!existingProjects.length && divisionFor(spreadsheetId()) === "UI/UX") {
     const names = new Set();
     for (const member of ["RIAN", "RAKA", "VIO", "ZIDNY", "GHIFARI"]) {
       const meta = await metadata();
@@ -295,7 +477,7 @@ async function rewriteDay(sheet, date, additions, mode = "write") {
       fields: "userEnteredValue"
     }});
   }
-  if (requests.length) await client().spreadsheets.batchUpdate({ spreadsheetId: SPREADSHEET_ID, requestBody: { requests } });
+  if (requests.length) await client().spreadsheets.batchUpdate({ spreadsheetId: spreadsheetId(), requestBody: { requests } });
   return old.map(r => ({ type: r[2], task: r[3], pct: r[4] }));
 }
 async function apiAction(user, action, p) {
@@ -359,7 +541,73 @@ async function apiAction(user, action, p) {
       await logAction(user, "DELETE", p.date, old.map(r=>({type:r[2],task:r[3],pct:r[4]})), null);
       return 1;
     }
+    case "meetingsHealth": {
+      const schema = await validateMeetingsDatabase();
+      return { ...schema, division: divisionId() };
+    }
+    case "meetingDirectory": return meetingDirectory();
+    case "meetingList": return meetingList();
+    case "meetingCreate": return createMeeting(user, p);
+    case "meetingMinutesCreate": return createMeetingMinutes(user, p);
+    case "divisionHealth": {
+      admin(user);
+      const results = [];
+      for (const division of DIVISION_NAMES) {
+        const db = DIVISIONS[division];
+        if (!db) { results.push({ division, configured: false, ok: false, message: "Spreadsheet ID environment variable is missing." }); continue; }
+        try {
+          const result = await requestContext.run({ spreadsheetId: db, division }, async () => {
+            const meta = await metadata(true);
+            const tabs = [...meta.keys()];
+            const hasUsers = meta.has("Users");
+            const hasProjects = meta.has("Projects");
+            const memberList = hasUsers ? (await users()).filter(x => x.sheet) : [];
+            const projectList = hasProjects ? await projects() : [];
+            let activityRows = 0;
+            const missingMemberSheets = [];
+            for (const member of memberList) {
+              if (!meta.has(member.sheet)) { missingMemberSheets.push(member.sheet); continue; }
+              activityRows += Math.max(0, (await memberRows(member.sheet)).filter(r => r.some(v => v !== "" && v != null)).length);
+            }
+            return { division, configured: true, ok: hasUsers && hasProjects && missingMemberSheets.length === 0, tabs, users: memberList.length, projects: projectList.length, activityRows, missingTabs: [!hasUsers ? "Users" : null, !hasProjects ? "Projects" : null].filter(Boolean), missingMemberSheets };
+          });
+          results.push(result);
+        } catch (e) {
+          results.push({ division, configured: true, ok: false, message: String(e.message || e).slice(0, 240) });
+        }
+      }
+      return results;
+    }
+    case "divisionInfo": return { division: divisionFor(spreadsheetId()), members: (await users()).filter(x=>x.sheet).map(x=>({username:x.username,fullName:x.fullName,sheet:x.sheet})) };
     case "projects": return projects();
+    case "requestDesign": {
+      if (divisionFor(spreadsheetId()) !== "Designer") fail("Request Design is only available in Designer division.",403);
+      const meta = await metadata();
+      if (!meta.has("REQUEST DESIGN")) fail('Sheet "REQUEST DESIGN" was not found.',404);
+      const rows = (await read("'REQUEST DESIGN'!A:T")).slice(1);
+      const items = rows.map((r,i)=>({row:i+2,values:Array.from({length:20},(_,k)=>r[k]??"")})).filter(x=>x.values.some(v=>String(v).trim())).map(x=>{ x.values[0]=serialToDate(x.values[0]) || String(x.values[0]||""); return x; });
+      if (p.mode === "list") return items;
+      if (p.mode === "add") {
+        const values = Array.from({length:20},(_,i)=>p.values?.[i] ?? "");
+        if (!values[0] || !values[1] || !values[2]) fail("Date, Activity Type and Request are required.");
+        await append("'REQUEST DESIGN'!A:T",[values],"USER_ENTERED");
+        await logAction(user,"REQUEST_DESIGN_CREATE",String(values[0]),null,values.slice(0,4)); return 1;
+      }
+      const row = Number(p.row); if (!Number.isInteger(row) || row < 2) fail("Invalid request row.");
+      if (p.mode === "edit") {
+        const values = Array.from({length:20},(_,i)=>p.values?.[i] ?? "");
+        if (!values[0] || !values[1] || !values[2]) fail("Date, Activity Type and Request are required.");
+        await write(`'REQUEST DESIGN'!A${row}:T${row}`,[values],"USER_ENTERED");
+        await logAction(user,"REQUEST_DESIGN_UPDATE",String(values[0]),null,values.slice(0,4)); return 1;
+      }
+      if (p.mode === "delete") {
+        const before = await read(`'REQUEST DESIGN'!A${row}:T${row}`);
+        if (!before.length) fail("Request not found.",404);
+        await write(`'REQUEST DESIGN'!A${row}:T${row}`,[Array(20).fill("")],"RAW");
+        await logAction(user,"REQUEST_DESIGN_DELETE",String(before[0]?.[0]||""),before[0]?.slice(0,4),null); return 1;
+      }
+      fail("Invalid Request Design operation.");
+    }
     case "addProject": {
       const name = clean(p.name);
       if (!name) fail("Name is required.");
@@ -369,7 +617,7 @@ async function apiAction(user, action, p) {
       const row = [id("P"), name, user.role === "Admin" ? "Active" : "Pending", user.username,
         (Date.now()-Date.UTC(1899,11,30))/86400000];
       await append("'Projects'!A:E", [row]);
-      const checkRows = await read("'Projects'!A2:E");
+      const checkRows = (await read("'Projects'!A:E")).slice(1);
       const saved = checkRows.some(r => r[0] === row[0] && clean(r[1]) === name);
       if (!saved) fail("Project could not be saved to the spreadsheet. Please try again.", 500);
       return { id: row[0], name, status: row[2], by: row[3] };
@@ -393,7 +641,7 @@ async function apiAction(user, action, p) {
     }
     case "setProject": {
       admin(user);
-      const rows = await read("'Projects'!A2:E");
+      const rows = (await read("'Projects'!A:E")).slice(1);
       const i = rows.findIndex(r => r[0] === p.id);
       if (i < 0) fail("Project not found.", 404);
       const name = String(p.name || "").trim();
@@ -435,7 +683,7 @@ async function apiAction(user, action, p) {
       return { projects: Object.keys(projectSet).sort(), members };
     }
     case "audit": {
-      const rows = await read("'Audit_Log'!A2:H");
+      const rows = (await read("'Audit_Log'!A:H")).slice(1);
       return rows.slice(-600).filter(r => user.role === "Admin" || r[2] === user.username).reverse().slice(0,200)
         .map(r => ({
           id:r[0], ts:serialToDateTime(r[1]), user:r[2], action:r[4],
@@ -487,11 +735,30 @@ export default async (request) => {
     const action = String(body.action || "");
     const payload = body.payload || {};
     if (action === "setup") {
-      const result = await setup(payload);
-      return Response.json({success:true,data:result});
+      const results = {};
+      for (const division of DIVISION_NAMES) {
+        if (!DIVISIONS[division]) continue;
+        results[division] = await requestContext.run({ spreadsheetId: DIVISIONS[division], division }, () => setup(payload));
+      }
+      return Response.json({success:true,data:{initialized:true,divisions:results}});
     }
-    const data = action === "login" ? await login(payload.username, payload.password) :
-      await apiAction(await authUser(body.token), action, payload);
+    let data;
+    if (action === "login") data = await login(payload.username, payload.password);
+    else {
+      let tokenPayload;
+      try { tokenPayload = JSON.parse(Buffer.from(String(body.token||"").split(".")[0], "base64url").toString("utf8")); } catch { fail("SESSION",401,"SESSION"); }
+      const homeDivision = tokenPayload.division;
+      if (!DIVISIONS[homeDivision]) fail("SESSION",401,"SESSION");
+      const user = await requestContext.run({ spreadsheetId: DIVISIONS[homeDivision], division: homeDivision }, () => authUser(body.token));
+      const requestedDivision = body.division || payload.division;
+      const activeDivision = user.role === "Admin" ? (DIVISIONS[requestedDivision] ? requestedDivision : "UI/UX") : homeDivision;
+      if (action === "passwd") data = await requestContext.run({ spreadsheetId: DIVISIONS[homeDivision], division: homeDivision }, () => apiAction(user, action, payload));
+      else data = await requestContext.run({ spreadsheetId: DIVISIONS[activeDivision], division: activeDivision }, async () => {
+        const scopedUser = { ...user, division: activeDivision };
+        if (action === "me") return { ...publicUser(user), activeDivision, availableDivisions: user.role === "Admin" ? DIVISION_NAMES.filter(d=>!!DIVISIONS[d]) : [homeDivision] };
+        return apiAction(scopedUser, action, payload);
+      });
+    }
     return Response.json({success:true,data});
   } catch (error) {
     console.error("Project Allocation API:", error);
@@ -505,10 +772,48 @@ export default async (request) => {
 };
 
 async function login(username, password) {
-  const list = await users();
-  const u = list.find(x => String(x.username).toLowerCase() === String(username || "").toLowerCase());
-  if (!u || u.status !== "Active" || hashPassword(String(password || ""), u.salt) !== u.hash) {
+  const candidates = ["Admin", "UI/UX", "Digital Marketing", "Designer"].filter(d => DIVISIONS[d]);
+  const matches = [];
+  const missingUsersTabs = [];
+
+  // A division without a Users tab must not break authentication for every other division.
+  // Check sheet metadata first so Google Sheets does not receive an invalid sheet range.
+  for (const division of candidates) {
+    const found = await requestContext.run({ spreadsheetId: DIVISIONS[division], division }, async () => {
+      const meta = await metadata();
+      if (!meta.has("Users")) {
+        missingUsersTabs.push(division);
+        return [];
+      }
+      const list = await users();
+      return list
+        .filter(x => String(x.username).trim().toLowerCase() === String(username || "").trim().toLowerCase())
+        .map(x => ({ ...x, division }));
+    });
+    matches.push(...found);
+  }
+
+  if (matches.length > 1) {
+    fail("This username exists in more than one division. Ask an administrator to make usernames unique.", 409);
+  }
+  const u = matches[0];
+  if (!u) {
+    if (missingUsersTabs.length === candidates.length) {
+      fail("User directories are not initialized. Run the development Setup first.", 503);
+    }
+    if (missingUsersTabs.length) {
+      fail(`The Users tab is missing in: ${missingUsersTabs.join(", ")}. Run Setup to initialize all divisions, then try again.`, 503);
+    }
     fail("Invalid username or password.", 401);
   }
-  return {token:createToken(u), user:publicUser(u)};
+  if (u.status !== "Active" || hashPassword(String(password || ""), u.salt) !== u.hash) {
+    fail("Invalid username or password.", 401);
+  }
+  return requestContext.run({ spreadsheetId: DIVISIONS[u.division], division: u.division }, () => ({
+    token: createToken(u),
+    user: {
+      ...publicUser(u),
+      availableDivisions: u.role === "Admin" ? DIVISION_NAMES.filter(d => !!DIVISIONS[d]) : [u.division]
+    }
+  }));
 }
