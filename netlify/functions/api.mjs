@@ -117,6 +117,120 @@ async function append(range, values, input = "RAW") {
     insertDataOption: "INSERT_ROWS", requestBody: { values }
   });
 }
+
+// Meetings data lives in one central spreadsheet. Division access is enforced
+// by the authenticated request context, never by a client-supplied DivisionID.
+const MEETING_HEADERS = {
+  Meetings: ["MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MeetingTitle", "MeetingDate", "StartTime", "EndTime", "MeetingType", "Location", "MeetingLink", "Agenda", "Description", "Status", "CreatedBy", "CreatedAt", "UpdatedAt"],
+  Meeting_Participants: ["ParticipantID", "MeetingID", "DivisionID", "UserID", "Attendance", "CreatedAt"],
+  Meeting_Minutes: ["MoMID", "MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MoMTitle", "MeetingDate", "Summary", "Discussion", "Decisions", "Status", "PDFURL", "CreatedBy", "CreatedAt", "UpdatedAt", "PublishedAt"],
+  Action_Items: ["ActionItemID", "MoMID", "DivisionID", "Title", "Description", "AssignedTo", "Priority", "DueDate", "Status", "CreatedBy", "CreatedAt", "UpdatedAt", "CompletedAt"],
+  Action_History: ["HistoryID", "ActionItemID", "DivisionID", "Action", "OldValue", "NewValue", "ChangedBy", "ChangedAt", "Notes"]
+};
+function meetingsSpreadsheetId() {
+  const id = clean(process.env.MEETINGS_SPREADSHEET_ID);
+  if (!id) fail("Meetings database is not configured. Set MEETINGS_SPREADSHEET_ID for this deploy context.", 503, "MEETINGS_NOT_CONFIGURED");
+  return id;
+}
+async function meetingRead(tab, endColumn) {
+  const db = meetingsSpreadsheetId();
+  const r = await client().spreadsheets.values.get({ spreadsheetId: db, range: `${quoteSheet(tab)}!A:${endColumn}`, valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "SERIAL_NUMBER" });
+  return r.data.values || [];
+}
+async function meetingAppend(tab, values) {
+  return client().spreadsheets.values.append({ spreadsheetId: meetingsSpreadsheetId(), range: `${quoteSheet(tab)}!A:${columnLetter(MEETING_HEADERS[tab].length)}`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values } });
+}
+async function validateMeetingsDatabase() {
+  const db = meetingsSpreadsheetId();
+  const r = await client().spreadsheets.get({ spreadsheetId: db });
+  const tabs = new Map((r.data.sheets || []).map(x => [x.properties.title, x.properties.sheetId]));
+  const issues = [];
+  for (const [tab, expected] of Object.entries(MEETING_HEADERS)) {
+    if (!tabs.has(tab)) { issues.push(`Missing sheet: ${tab}`); continue; }
+    const actual = (await meetingRead(tab, columnLetter(expected.length)))[0] || [];
+    const normalized = expected.map((_, i) => clean(actual[i]));
+    if (expected.some((h, i) => normalized[i] !== h)) issues.push(`Header mismatch: ${tab}`);
+  }
+  if (issues.length) fail(`Meetings database validation failed: ${issues.join("; ")}`, 409, "MEETINGS_SCHEMA_INVALID");
+  return { ok: true, tabs: Object.keys(MEETING_HEADERS), spreadsheetIdConfigured: true };
+}
+function divisionId() {
+  const division = requestContext.getStore()?.division;
+  if (!DIVISIONS[division]) fail("Active division context is invalid.", 403);
+  return division;
+}
+function sheetDate(v) { return serialToDate(v) || String(v || ""); }
+function sheetTime(v) {
+  if (typeof v === "number") {
+    const minutes = Math.round(v * 24 * 60);
+    return `${String(Math.floor(minutes / 60)).padStart(2,"0")}:${String(minutes % 60).padStart(2,"0")}`;
+  }
+  return String(v || "");
+}
+async function meetingDirectory() {
+  await validateMeetingsDatabase();
+  const [memberRowsData, projectList] = await Promise.all([users(), projects()]);
+  return {
+    division: divisionId(),
+    members: memberRowsData.filter(x => x.status === "Active").map(x => ({ id: x.id, username: x.username, fullName: x.fullName, role: x.role })),
+    projects: projectList.filter(x => !x.status || x.status === "Active").map(x => ({ id: x.id, name: x.name }))
+  };
+}
+async function meetingList() {
+  await validateMeetingsDatabase();
+  const division = divisionId();
+  const [meetingRows, participantRows, momRows] = await Promise.all([
+    meetingRead("Meetings", "Q"), meetingRead("Meeting_Participants", "F"), meetingRead("Meeting_Minutes", "P")
+  ]);
+  const meetings = meetingRows.slice(1).filter(r => r[1] === division).map(r => ({
+    id: r[0], division: r[1], projectId: r[2] || "", projectName: r[3] || "", title: r[4] || "",
+    date: sheetDate(r[5]), startTime: sheetTime(r[6]), endTime: sheetTime(r[7]), type: r[8] || "",
+    location: r[9] || "", link: r[10] || "", agenda: r[11] || "", description: r[12] || "", status: r[13] || "",
+    createdBy: r[14] || "", createdAt: r[15] || "", updatedAt: r[16] || ""
+  }));
+  const allowed = new Set(meetings.map(m => m.id));
+  const participants = participantRows.slice(1).filter(r => r[2] === division && allowed.has(r[1])).map(r => ({ id:r[0], meetingId:r[1], userId:r[3], attendance:r[4] || "Invited" }));
+  const minutes = momRows.slice(1).filter(r => r[2] === division).map(r => ({
+    id:r[0], meetingId:r[1] || "", division:r[2], projectId:r[3] || "", projectName:r[4] || "", title:r[5] || "",
+    date:sheetDate(r[6]), summary:r[7] || "", discussion:r[8] || "", decisions:r[9] || "", status:r[10] || "",
+    pdfUrl:r[11] || "", createdBy:r[12] || "", createdAt:r[13] || "", updatedAt:r[14] || "", publishedAt:r[15] || ""
+  }));
+  return { meetings, participants, minutes };
+}
+async function createMeeting(user, p) {
+  await validateMeetingsDatabase();
+  const division = divisionId();
+  const title = clean(p.title);
+  const date = clean(p.date);
+  const start = clean(p.startTime), end = clean(p.endTime);
+  if (!title || title.length > 160) fail("Meeting title is required (max 160 characters).");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail("A valid meeting date is required.");
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || end <= start) fail("Please provide a valid start and end time.");
+  const projectId = clean(p.projectId);
+  let projectName = "";
+  if (projectId) {
+    const project = (await projects()).find(x => x.id === projectId && (!x.status || x.status === "Active"));
+    if (!project) fail("Selected project was not found in this division.", 404);
+    projectName = project.name;
+  }
+  const activeUsers = (await users()).filter(x => x.status === "Active");
+  const requested = Array.isArray(p.participantIds) ? [...new Set(p.participantIds.map(clean).filter(Boolean))] : [];
+  const allowedIds = new Set(activeUsers.map(x => x.id));
+  if (requested.some(id => !allowedIds.has(id))) fail("One or more participants are not active members of this division.", 403);
+  // Include the creator only when their account belongs to the active division.
+  // A central Admin switching divisions is not silently added as a cross-division participant.
+  if (allowedIds.has(user.id) && !requested.includes(user.id)) requested.push(user.id);
+  const now = (Date.now() - Date.UTC(1899,11,30)) / 86400000;
+  const meetingId = id("MTG");
+  const row = [meetingId, division, projectId, projectName, title, toSerial(date), start, end,
+    clean(p.type) || "Online", clean(p.location), clean(p.link), String(p.agenda || "").trim(),
+    String(p.description || "").trim(), "Scheduled", user.id, now, now];
+  await meetingAppend("Meetings", [row]);
+  if (requested.length) await meetingAppend("Meeting_Participants", requested.map(userId => [id("MTP"), meetingId, division, userId, "Invited", now]));
+  const verify = (await meetingRead("Meetings", "Q")).slice(1).some(r => r[0] === meetingId && r[1] === division);
+  if (!verify) fail("Meeting could not be verified after saving. Please refresh before retrying.", 500);
+  return { id: meetingId, division, title, date, startTime: start, endTime: end, projectId, projectName, participantIds: requested };
+}
 async function lastRow(name) {
   const rows = await read(`${quoteSheet(name)}!A:A`);
   return rows.length;
@@ -381,6 +495,13 @@ async function apiAction(user, action, p) {
       await logAction(user, "DELETE", p.date, old.map(r=>({type:r[2],task:r[3],pct:r[4]})), null);
       return 1;
     }
+    case "meetingsHealth": {
+      const schema = await validateMeetingsDatabase();
+      return { ...schema, division: divisionId() };
+    }
+    case "meetingDirectory": return meetingDirectory();
+    case "meetingList": return meetingList();
+    case "meetingCreate": return createMeeting(user, p);
     case "divisionHealth": {
       admin(user);
       const results = [];
