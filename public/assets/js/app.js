@@ -246,3 +246,290 @@ const controlObserver=new MutationObserver(records=>{for(const r of records)r.ad
 controlObserver.observe(document.body,{childList:true,subtree:true});
 document.addEventListener('DOMContentLoaded',()=>enhanceControls());
 
+
+
+/* =========================
+   MEETINGS & AGENDA — PHASE 2
+   Additive UI extension. Keep existing Phase 1 globals and flows untouched.
+   ========================= */
+if (!NAV.some(item => item[0] === 'meetings')) NAV.push(['meetings', 'Meetings & Agenda']);
+
+var meetingsState = {
+  loaded: false,
+  loading: false,
+  meetings: [],
+  participants: [],
+  minutes: [],
+  directory: null,
+  view: 'month',
+  cursor: today(),
+  selectedDate: today(),
+  query: ''
+};
+
+function meetingsEsc(value) {
+  return esc(value == null ? '' : String(value));
+}
+function meetingsDateParts(value) {
+  var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  return match ? { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) } : null;
+}
+function meetingsDateString(year, month, day) {
+  return String(year) + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+function meetingsLocalDate(value) {
+  var p = meetingsDateParts(value);
+  return p ? new Date(p.year, p.month - 1, p.day) : new Date();
+}
+function meetingsFormatDate(value) {
+  var p = meetingsDateParts(value);
+  if (!p) return value || '—';
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    .format(new Date(p.year, p.month - 1, p.day));
+}
+function meetingsMonthTitle(value) {
+  var p = meetingsDateParts(value);
+  return p ? new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(new Date(p.year, p.month - 1, 1)) : '';
+}
+function meetingsShiftDate(value, amount) {
+  var d = meetingsLocalDate(value);
+  d.setDate(d.getDate() + amount);
+  return meetingsDateString(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+function meetingsGetItemsForDate(date) {
+  var meetings = meetingsState.meetings.filter(function (item) { return item.date === date; })
+    .map(function (item) { return { kind: 'Meeting', title: item.title, time: item.startTime || '', item: item }; });
+  var minutes = meetingsState.minutes.filter(function (item) { return item.date === date; })
+    .map(function (item) { return { kind: 'Meeting Minutes', title: item.title, time: '', item: item }; });
+  return meetings.concat(minutes).sort(function (a, b) { return String(a.time).localeCompare(String(b.time)); });
+}
+function meetingsRenderCalendar() {
+  var host = document.getElementById('meetings-calendar');
+  if (!host) return;
+  var selected = meetingsState.selectedDate;
+  var cursorParts = meetingsDateParts(meetingsState.cursor);
+  if (!cursorParts) return;
+  var html = '';
+  if (meetingsState.view === 'month') {
+    var first = new Date(cursorParts.year, cursorParts.month - 1, 1);
+    var offset = (first.getDay() + 6) % 7;
+    var start = new Date(cursorParts.year, cursorParts.month - 1, 1 - offset);
+    html = '<div class="meet-cal-weekdays">' + ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(function (day) { return '<span>' + day + '</span>'; }).join('') + '</div><div class="meet-cal-month-grid">';
+    for (var i = 0; i < 42; i++) {
+      var cell = new Date(start);
+      cell.setDate(start.getDate() + i);
+      var date = meetingsDateString(cell.getFullYear(), cell.getMonth() + 1, cell.getDate());
+      var sameMonth = cell.getMonth() === cursorParts.month - 1;
+      var count = meetingsGetItemsForDate(date).length;
+      var classes = ['meet-cal-day', sameMonth ? '' : 'outside', date === selected ? 'selected' : '', date === today() ? 'today' : ''].filter(Boolean).join(' ');
+      html += '<button type="button" class="' + classes + '" onclick="meetingsSelectDate(\'' + date + '\')"><span>' + cell.getDate() + '</span>' +
+        (count ? '<i class="meet-cal-dot" aria-label="' + count + ' scheduled item(s)"></i>' : '') + '</button>';
+    }
+    html += '</div>';
+  } else if (meetingsState.view === 'week') {
+    var day = meetingsLocalDate(meetingsState.cursor);
+    day.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+    html = '<div class="meet-cal-week-grid">';
+    for (var w = 0; w < 7; w++) {
+      var wd = new Date(day);
+      wd.setDate(day.getDate() + w);
+      var wdStr = meetingsDateString(wd.getFullYear(), wd.getMonth() + 1, wd.getDate());
+      var items = meetingsGetItemsForDate(wdStr);
+      html += '<button type="button" class="meet-cal-week-day ' + (wdStr === selected ? 'selected' : '') + '" onclick="meetingsSelectDate(\'' + wdStr + '\')">' +
+        '<small>' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][wd.getDay()] + '</small><b>' + wd.getDate() + '</b><span>' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</span></button>';
+    }
+    html += '</div>';
+  } else {
+    var dateItems = meetingsGetItemsForDate(selected);
+    html = '<div class="meet-cal-day-view"><div class="meet-cal-day-heading">' + meetingsFormatDate(selected) + '</div>' +
+      (dateItems.length ? dateItems.map(meetingsEventMarkup).join('') : '<div class="empty">No meetings scheduled for this day.</div>') + '</div>';
+  }
+  host.innerHTML = html;
+  var selectedHost = document.getElementById('meetings-selected-items');
+  if (selectedHost) {
+    var selectedItems = meetingsGetItemsForDate(selected);
+    selectedHost.innerHTML = '<div class="meet-section-head"><div><b>' + meetingsFormatDate(selected) + '</b><small>' + selectedItems.length + ' scheduled item(s)</small></div>' +
+      '<button class="btn2" type="button" onclick="meetingsOpenCreate(\'' + selected + '\')">+ Add meeting</button></div>' +
+      (selectedItems.length ? selectedItems.map(meetingsEventMarkup).join('') : '<div class="empty">No meetings or minutes on this date.</div>');
+  }
+}
+function meetingsEventMarkup(entry) {
+  var item = entry.item || {};
+  var label = entry.kind === 'Meeting' ? ((item.startTime || '') + (item.endTime ? ' – ' + item.endTime : '')) : 'Minutes';
+  var onclick = entry.kind === 'Meeting' ? 'meetingsShowDetails(\'' + meetingsEsc(item.id) + '\')' : '';
+  return '<button type="button" class="meet-event" ' + (onclick ? 'onclick="' + onclick + '"' : 'disabled') + '>' +
+    '<span class="meet-event-kind">' + meetingsEsc(entry.kind) + '</span><b>' + meetingsEsc(entry.title) + '</b><small>' + meetingsEsc(label) + '</small></button>';
+}
+function meetingsSelectDate(date) {
+  if (!meetingsDateParts(date)) return;
+  meetingsState.selectedDate = date;
+  meetingsState.cursor = date;
+  meetingsRenderCalendar();
+}
+function meetingsSetView(view) {
+  if (['month','week','day'].indexOf(view) < 0) return;
+  meetingsState.view = view;
+  meetingsRenderCalendar();
+  var buttons = document.querySelectorAll('[data-meet-view]');
+  buttons.forEach(function (button) { button.classList.toggle('on', button.dataset.meetView === view); });
+}
+function meetingsNavigate(step) {
+  var d = meetingsLocalDate(meetingsState.cursor);
+  if (meetingsState.view === 'month') d.setMonth(d.getMonth() + step, 1);
+  else if (meetingsState.view === 'week') d.setDate(d.getDate() + (step * 7));
+  else d.setDate(d.getDate() + step);
+  meetingsState.cursor = meetingsDateString(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  meetingsState.selectedDate = meetingsState.cursor;
+  meetingsRenderCalendar();
+  var title = document.getElementById('meetings-period-title');
+  if (title) title.textContent = meetingsState.view === 'month' ? meetingsMonthTitle(meetingsState.cursor) :
+    meetingsState.view === 'week' ? 'Week of ' + meetingsFormatDate(meetingsState.cursor) : meetingsFormatDate(meetingsState.cursor);
+}
+function meetingsRefreshPeriodTitle() {
+  var title = document.getElementById('meetings-period-title');
+  if (!title) return;
+  title.textContent = meetingsState.view === 'month' ? meetingsMonthTitle(meetingsState.cursor) :
+    meetingsState.view === 'week' ? 'Week of ' + meetingsFormatDate(meetingsState.cursor) : meetingsFormatDate(meetingsState.cursor);
+}
+function meetingsRenderList() {
+  var host = document.getElementById('meetings-list');
+  if (!host) return;
+  var q = meetingsState.query.toLowerCase();
+  var rows = meetingsState.meetings.filter(function (item) {
+    return !q || [item.title,item.projectName,item.location,item.type,item.status,item.date].join(' ').toLowerCase().indexOf(q) >= 0;
+  }).sort(function (a,b) { return (a.date + a.startTime).localeCompare(b.date + b.startTime); });
+  host.innerHTML = rows.length ? rows.map(function (item) {
+    return '<button type="button" class="meet-list-row" onclick="meetingsShowDetails(\'' + meetingsEsc(item.id) + '\')">' +
+      '<span class="meet-list-date"><b>' + meetingsEsc(String(item.date || '').slice(8,10) || '—') + '</b><small>' + meetingsEsc(String(item.date || '').slice(0,7)) + '</small></span>' +
+      '<span class="meet-list-main"><b>' + meetingsEsc(item.title) + '</b><small>' + meetingsEsc(item.projectName || 'No project') + ' · ' + meetingsEsc(item.type || 'Meeting') + '</small></span>' +
+      '<span class="meet-list-time">' + meetingsEsc(item.startTime || '') + (item.endTime ? ' – ' + meetingsEsc(item.endTime) : '') + '</span>' +
+      '<span class="bd w">' + meetingsEsc(item.status || 'Scheduled') + '</span></button>';
+  }).join('') : '<div class="empty">No meetings found.</div>';
+}
+async function meetingsShowDetails(id) {
+  var item = meetingsState.meetings.find(function (meeting) { return meeting.id === id; });
+  if (!item) return;
+  try { await meetingsLoadDirectory(); } catch (error) { /* Details remain available without participant names. */ }
+  var people = meetingsState.participants.filter(function (p) { return p.meetingId === id; });
+  var names = people.map(function (p) {
+    var member = meetingsState.directory && meetingsState.directory.members.find(function (m) { return m.id === p.userId; });
+    return member ? member.fullName : 'Division member';
+  });
+  var body = '<div class="meet-detail-grid">' +
+    '<div><small>Date</small><b>' + meetingsEsc(meetingsFormatDate(item.date)) + '</b></div>' +
+    '<div><small>Time</small><b>' + meetingsEsc(item.startTime + ' – ' + item.endTime) + '</b></div>' +
+    '<div><small>Type</small><b>' + meetingsEsc(item.type) + '</b></div>' +
+    '<div><small>Project</small><b>' + meetingsEsc(item.projectName || 'Not assigned') + '</b></div>' +
+    '<div><small>Location / Link</small><b>' + meetingsEsc(item.location || item.link || 'Not specified') + '</b></div>' +
+    '<div><small>Participants</small><b>' + meetingsEsc(names.join(', ') || 'No participants listed') + '</b></div>' +
+    '</div><div class="meet-detail-block"><small>Agenda</small><p>' + meetingsEsc(item.agenda || 'No agenda provided.') + '</p></div>' +
+    '<div class="meet-detail-block"><small>Description</small><p>' + meetingsEsc(item.description || 'No description provided.') + '</p></div>';
+  modal(meetingsEsc(item.title), body, 'Close', async function () {});
+}
+async function meetingsLoad(force) {
+  if (meetingsState.loading) return;
+  if (meetingsState.loaded && !force) return;
+  meetingsState.loading = true;
+  try {
+    // Deliberately load one endpoint first; directory is fetched only when creating a meeting.
+    // This avoids parallel duplicate validation calls against the central spreadsheet.
+    var result = await api('meetingList');
+    meetingsState.meetings = Array.isArray(result.meetings) ? result.meetings : [];
+    meetingsState.participants = Array.isArray(result.participants) ? result.participants : [];
+    meetingsState.minutes = Array.isArray(result.minutes) ? result.minutes : [];
+    meetingsState.loaded = true;
+  } finally {
+    meetingsState.loading = false;
+  }
+}
+async function meetingsLoadDirectory() {
+  if (meetingsState.directory) return meetingsState.directory;
+  meetingsState.directory = await api('meetingDirectory');
+  return meetingsState.directory;
+}
+function meetingsOpenCreate(date) {
+  meetingsLoadDirectory().then(function (directory) {
+    var projects = directory.projects || [];
+    var members = directory.members || [];
+    var selectedDate = meetingsDateParts(date) ? date : today();
+    var body = '<div class="meet-form-grid">' +
+      '<label class="meet-field meet-span-2">Meeting title<input id="meet-title" maxlength="160" required placeholder="e.g. Weekly Project Review"></label>' +
+      '<label class="meet-field">Date<input id="meet-date" type="date" value="' + meetingsEsc(selectedDate) + '" required></label>' +
+      '<label class="meet-field">Project (optional)<select id="meet-project"><option value="">No project</option>' + projects.map(function (p) { return '<option value="' + meetingsEsc(p.id) + '">' + meetingsEsc(p.name) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="meet-field">Start time<input id="meet-start" type="time" value="09:00" required></label>' +
+      '<label class="meet-field">End time<input id="meet-end" type="time" value="10:00" required></label>' +
+      '<label class="meet-field">Meeting type<select id="meet-type"><option>Online</option><option>Offline</option></select></label>' +
+      '<label class="meet-field">Location<input id="meet-location" placeholder="Meeting room / venue"></label>' +
+      '<label class="meet-field meet-span-2">Meeting link<input id="meet-link" type="url" placeholder="https://..."></label>' +
+      '<label class="meet-field meet-span-2">Agenda<textarea id="meet-agenda" rows="3" placeholder="Topics to discuss"></textarea></label>' +
+      '<label class="meet-field meet-span-2">Description<textarea id="meet-description" rows="3" placeholder="Additional information"></textarea></label>' +
+      '</div><div class="meet-participants"><b>Participants</b><small>Select members from ' + meetingsEsc(directory.division || ACTIVE_DIVISION) + ' division only.</small>' +
+      (members.length ? '<div class="meet-participant-grid">' + members.map(function (m) {
+        return '<label><input type="checkbox" name="meet-participant" value="' + meetingsEsc(m.id) + '"><span>' + meetingsEsc(m.fullName) + '</span><small>' + meetingsEsc(m.role || '') + '</small></label>';
+      }).join('') + '</div>' : '<div class="empty">No active members available.</div>') + '</div>';
+    modal('Create Meeting', body, 'Create meeting', async function () {
+      var title = document.getElementById('meet-title').value.trim();
+      var dateValue = document.getElementById('meet-date').value;
+      var startTime = document.getElementById('meet-start').value;
+      var endTime = document.getElementById('meet-end').value;
+      if (!title || !dateValue || !startTime || !endTime) throw new Error('Please complete the meeting title, date, and time.');
+      if (endTime <= startTime) throw new Error('End time must be later than start time.');
+      var participantIds = Array.from(document.querySelectorAll('input[name="meet-participant"]:checked')).map(function (input) { return input.value; });
+      await api('meetingCreate', {
+        title: title, date: dateValue, startTime: startTime, endTime: endTime,
+        projectId: document.getElementById('meet-project').value,
+        type: document.getElementById('meet-type').value,
+        location: document.getElementById('meet-location').value.trim(),
+        link: document.getElementById('meet-link').value.trim(),
+        agenda: document.getElementById('meet-agenda').value.trim(),
+        description: document.getElementById('meet-description').value.trim(),
+        participantIds: participantIds
+      });
+      meetingsState.loaded = false;
+      await meetingsLoad(true);
+      meetingsState.cursor = dateValue;
+      meetingsState.selectedDate = dateValue;
+      meetingsRenderPage();
+      toast('Meeting created successfully.');
+    });
+  }).catch(function (error) { toast(msg(error), 1); });
+}
+function meetingsRenderPage() {
+  var view = document.getElementById('view');
+  if (!view) return;
+  view.innerHTML = '<div class="meet-toolbar">' +
+    '<div class="meet-toolbar-left"><button class="btn" type="button" onclick="meetingsOpenCreate(meetingsState.selectedDate)">+ Create Meeting</button>' +
+    '<span class="meet-division-label">' + meetingsEsc(ACTIVE_DIVISION) + ' division</span></div>' +
+    '<div class="meet-toolbar-right"><button class="btn2" type="button" onclick="meetingsReload()">Refresh</button></div></div>' +
+    '<section class="meet-calendar-card card"><div class="meet-cal-toolbar"><div class="meet-cal-nav"><button class="btn2" type="button" onclick="meetingsNavigate(-1)" aria-label="Previous period">‹</button><b id="meetings-period-title"></b><button class="btn2" type="button" onclick="meetingsNavigate(1)" aria-label="Next period">›</button><button class="btn2" type="button" onclick="meetingsGoToday()">Today</button></div>' +
+    '<div class="seg meet-view-switch"><button type="button" data-meet-view="month" class="on" onclick="meetingsSetView(\'month\')">Month</button><button type="button" data-meet-view="week" onclick="meetingsSetView(\'week\')">Week</button><button type="button" data-meet-view="day" onclick="meetingsSetView(\'day\')">Day</button></div></div>' +
+    '<div id="meetings-calendar"></div><div id="meetings-selected-items" class="meet-selected-items"></div></section>' +
+    '<section class="card meet-list-card"><div class="meet-list-head"><div><b>Meetings</b><small>Schedules in ' + meetingsEsc(ACTIVE_DIVISION) + '</small></div><input id="meetings-search" type="search" placeholder="Search meetings" value="' + meetingsEsc(meetingsState.query) + '" oninput="meetingsState.query=this.value;meetingsRenderList()"></div><div id="meetings-list"></div></section>';
+  meetingsRefreshPeriodTitle();
+  meetingsSetView(meetingsState.view);
+  meetingsRenderList();
+}
+function meetingsGoToday() {
+  meetingsState.cursor = today();
+  meetingsState.selectedDate = today();
+  meetingsRenderCalendar();
+  meetingsRefreshPeriodTitle();
+}
+async function meetingsReload() {
+  try {
+    meetingsState.loaded = false;
+    await meetingsLoad(true);
+    meetingsRenderPage();
+    toast('Meetings refreshed.');
+  } catch (error) { toast(msg(error), 1); }
+}
+V.meetings = async function () {
+  try {
+    await meetingsLoad(false);
+    meetingsRenderPage();
+  } catch (error) {
+    // Keep the error visible and the rest of the application usable.
+    document.getElementById('view').innerHTML = '<div class="card"><div class="empty">Meetings could not be loaded. Check the Meetings database connection, then use Refresh to try again.</div><button class="btn2" type="button" onclick="meetingsReload()">Retry</button></div>';
+    toast(msg(error), 1);
+  }
+};

@@ -171,3 +171,81 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
 
 #division-control{margin-left:auto}#division-select{min-width:180px;max-width:240px;padding:9px 12px;border:1px solid var(--b);border-radius:10px;background:#fff;color:var(--t);font:inherit}.muted{color:var(--t2);font-size:12px}
 @media(max-width:800px){#division-control{margin-left:auto}#division-select{min-width:130px;max-width:180px;font-size:12px}}
+
+
+/* Meetings & Agenda — Phase 2 (scoped styles) */
+.meet-toolbar,.meet-toolbar-left,.meet-toolbar-right,.meet-cal-toolbar,.meet-cal-nav,.meet-section-head,.meet-list-head{display:flex;align-items:center;gap:10px}
+.meet-toolbar{justify-content:space-between;margin-bottom:14px;flex-wrap:wrap}
+.meet-toolbar-left,.meet-toolbar-right{flex-wrap:wrap}
+.meet-division-label{font-size:12px;color:var(--t2);background:#eef4ff;padding:7px 10px;border-radius:8px}
+.meet-calendar-card{padding:16px;margin-bottom:14px}
+.meet-cal-toolbar{justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.meet-cal-nav{gap:8px}
+.meet-cal-nav b{min-width:150px;text-align:center;color:var(--a)}
+.meet-view-switch{display:flex;gap:3px}
+.meet-view-switch button{padding:8px 12px}
+.meet-cal-weekdays,.meet-cal-month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.meet-cal-weekdays{margin-bottom:6px}
+.meet-cal-weekdays span{text-align:center;color:var(--t2);font-size:11px;font-weight:600;padding:8px 2px}
+.meet-cal-day{min-height:64px;border:1px solid #e7edf6;border-radius:9px;background:#fff;text-align:left;padding:8px;color:var(--t);display:flex;flex-direction:column;justify-content:space-between;cursor:pointer}
+.meet-cal-day:hover,.meet-cal-week-day:hover{border-color:var(--a);background:#f6f9ff}
+.meet-cal-day.outside{opacity:.4;background:#fafbfd}
+.meet-cal-day.selected{border:2px solid var(--a);background:#f1f6ff;padding:7px}
+.meet-cal-day.today>span{color:var(--a);font-weight:700}
+.meet-cal-dot{width:7px;height:7px;border-radius:50%;background:var(--a);display:block}
+.meet-cal-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.meet-cal-week-day{min-height:104px;border:1px solid #e7edf6;border-radius:10px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:var(--t);cursor:pointer}
+.meet-cal-week-day small,.meet-cal-week-day span{font-size:11px;color:var(--t2)}
+.meet-cal-week-day b{font-size:22px}
+.meet-cal-week-day.selected{border:2px solid var(--a);background:#f1f6ff}
+.meet-cal-day-view{max-width:760px;margin:0 auto}
+.meet-cal-day-heading{font-weight:700;color:var(--a);padding:8px 0 14px}
+.meet-selected-items{border-top:1px solid #edf1f7;margin-top:16px;padding-top:14px}
+.meet-section-head,.meet-list-head{justify-content:space-between;margin-bottom:10px}
+.meet-section-head>div,.meet-list-head>div{display:flex;flex-direction:column;gap:3px}
+.meet-section-head small,.meet-list-head small{font-size:11px;color:var(--t2)}
+.meet-event{width:100%;display:grid;grid-template-columns:130px minmax(0,1fr) auto;align-items:center;gap:10px;text-align:left;border:1px solid #edf1f7;border-radius:9px;padding:10px 12px;background:#fff;margin-top:7px;color:var(--t)}
+.meet-event:not(:disabled){cursor:pointer}
+.meet-event:not(:disabled):hover{border-color:var(--a);background:#f8faff}
+.meet-event-kind{font-size:11px;color:var(--a);font-weight:600}
+.meet-event small{font-size:11px;color:var(--t2)}
+.meet-list-card{padding:16px}
+.meet-list-head{flex-wrap:wrap}
+.meet-list-head input{max-width:260px}
+.meet-list-row{width:100%;display:grid;grid-template-columns:62px minmax(0,1fr) 120px 100px;align-items:center;gap:12px;padding:12px 8px;border:0;border-top:1px solid #edf1f7;background:#fff;text-align:left;color:var(--t);cursor:pointer}
+.meet-list-row:hover{background:#f8faff}
+.meet-list-date,.meet-list-main{display:flex;flex-direction:column;gap:3px}
+.meet-list-date b{font-size:18px;color:var(--a)}
+.meet-list-date small,.meet-list-main small,.meet-list-time{font-size:11px;color:var(--t2)}
+.meet-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:12px 0}
+.meet-detail-grid>div,.meet-detail-block{display:flex;flex-direction:column;gap:5px}
+.meet-detail-grid small,.meet-detail-block small{font-size:11px;color:var(--t2)}
+.meet-detail-grid b{font-size:13px;overflow-wrap:anywhere}
+.meet-detail-block{border-top:1px solid #edf1f7;padding-top:12px;margin-top:12px}
+.meet-detail-block p{white-space:pre-wrap;margin:0;color:var(--t);font-size:13px}
+.meet-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.meet-field{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--t)}
+.meet-field input,.meet-field select,.meet-field textarea{width:100%;min-width:0;border:1px solid #dce4ef;border-radius:8px;padding:10px;font:inherit;font-weight:400;color:var(--t);background:#fff}
+.meet-field textarea{resize:vertical}
+.meet-span-2{grid-column:span 2}
+.meet-participants{border-top:1px solid #edf1f7;margin-top:16px;padding-top:14px;display:flex;flex-direction:column;gap:8px}
+.meet-participants>small{font-size:11px;color:var(--t2)}
+.meet-participant-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:180px;overflow:auto}
+.meet-participant-grid label{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;gap:3px 8px;padding:8px;border:1px solid #edf1f7;border-radius:8px;font-size:12px}
+.meet-participant-grid input{grid-row:span 2}
+.meet-participant-grid small{grid-column:2;color:var(--t2);font-size:10px}
+@media(max-width:700px){
+ .meet-calendar-card,.meet-list-card{padding:12px}
+ .meet-cal-day{min-height:46px;padding:5px;font-size:12px}
+ .meet-cal-week-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .meet-cal-week-day{min-height:82px}
+ .meet-event{grid-template-columns:1fr auto;gap:4px 8px}
+ .meet-event-kind{grid-column:1/-1}
+ .meet-event small{grid-column:2;grid-row:2}
+ .meet-list-row{grid-template-columns:48px minmax(0,1fr);gap:8px}
+ .meet-list-time,.meet-list-row>.bd{grid-column:2}
+ .meet-form-grid{grid-template-columns:1fr}
+ .meet-span-2{grid-column:span 1}
+ .meet-participant-grid{grid-template-columns:1fr}
+ .meet-cal-nav b{min-width:120px}
+}

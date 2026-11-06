@@ -30,3 +30,10 @@ Important deployment notes
 - Verify existing user accounts are present in each division's Users tab. The Admin account must exist in the Admin spreadsheet Users tab.
 - Usernames must be unique across all four divisions.
 - The uploaded XLSX dropdown lists are used only to seed empty Projects helper tabs. The actual live Google Sheets dropdown validation rules are not rewritten.
+
+
+MEETINGS PHASE 2 (careful additive frontend)
+- Built from the user-confirmed stable Phase 1 ZIP.
+- Added Meetings & Agenda navigation, calendar Month/Week/Day, list, details, and create meeting UI.
+- No changes to Phase 1 backend, authentication, division routing, or existing feature logic.
+- JavaScript syntax checks passed; live Google Sheets / Netlify runtime not tested.
