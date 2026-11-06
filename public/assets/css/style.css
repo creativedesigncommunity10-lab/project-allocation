@@ -310,3 +310,32 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
  .meet-form-grid{grid-template-columns:1fr}
  .meet-span-2{grid-column:span 1}
 }
+
+/* Meetings & Agenda sub-navigation */
+.nav-group{margin:2px 0 8px;padding:4px 0 6px;border-radius:12px}
+.nav-group-title{padding:10px 14px 7px;color:var(--t2);font-size:12px;font-weight:700;letter-spacing:.02em}
+.nav-subnav{display:flex;flex-direction:column;gap:2px;padding-left:10px;border-left:2px solid #dce8f8;margin-left:14px}
+#nav .nav-subnav a{font-size:13px;padding:9px 12px;margin:0;min-height:38px}
+#nav .nav-subnav a.on{background:#eaf2ff;color:#1856b5;box-shadow:none;font-weight:700}
+.nav-group.active .nav-group-title{color:#1856b5}
+
+/* Distinguish calendar entries: blue = Meeting, yellow = MoM */
+.meet-calendar-legend{display:flex;gap:16px;align-items:center;justify-content:flex-end;margin:-5px 2px 10px;color:var(--t2);font-size:11px}
+.meet-calendar-legend span{display:inline-flex;align-items:center;gap:6px}
+.meet-calendar-legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.meeting-key,.meeting-dot{background:#2874d8}
+.mom-key,.mom-dot{background:#e5ad32}
+.meet-cal-markers{display:flex;align-items:center;gap:4px;min-height:8px}
+.meet-cal-day .meet-cal-markers{align-self:flex-start}
+.meet-cal-day .meet-cal-dot{width:7px;height:7px}
+.meet-cal-week-day .meet-cal-markers{min-height:8px}
+.meet-event.meeting-event{border-left:3px solid #2874d8;background:#f5f9ff}
+.meet-event.mom-event{border-left:3px solid #e5ad32;background:#fffaf0}
+.meet-event.meeting-event .meet-event-kind{color:#2366bd}
+.meet-event.mom-event .meet-event-kind{color:#a87912}
+.meet-event.mom-event:not(:disabled):hover{border-color:#d6a02b;background:#fff6df}
+@media(max-width:800px){
+ .nav-group{flex:1 1 100%}
+ .nav-subnav{padding-left:8px}
+ .meet-calendar-legend{justify-content:flex-start;margin-top:0}
+}

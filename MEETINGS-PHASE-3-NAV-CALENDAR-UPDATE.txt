@@ -1,0 +1,12 @@
+Meetings & Agenda navigation and calendar visual update
+
+- Meetings & Agenda is now a sidebar navigation group with two sub-pages: Meetings and MoM.
+- Meetings page keeps the calendar and scheduled meeting list.
+- MoM has its own page and its own Create MoM action; it is no longer opened as a secondary layer from the Meetings page.
+- Calendar continues to show both scheduled Meetings and MoM entries.
+- Meeting entries use blue indicators and blue-accent event rows.
+- MoM entries use yellow indicators and yellow-accent event rows.
+- Calendar legend explains the two colors.
+- No API, spreadsheet schema, or database behavior was changed in this update.
+
+Validation: app.js and api.mjs pass Node syntax checks. No live Netlify/Google Sheets runtime test was performed.

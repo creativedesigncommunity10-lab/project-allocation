@@ -26,17 +26,24 @@ function out(){api('logout').finally(()=>{sessionStorage.clear();location.reload
 if(T)api('me').then(start).catch(()=>{});
 
 const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['meetings','Meetings & Agenda'],['usr','User Management','A'],['health','Data Connection','A']];
+function renderNavigation(){
+ const visible=NAV.filter(n=>n[2]!=='A'||U.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer');
+ $('#nav').innerHTML=visible.map(n=>{
+  if(n[0]==='meetings')return '<div class="nav-group"><div class="nav-group-title">Meetings &amp; Agenda</div><div class="nav-subnav"><a id="n_meetings" onclick="go(\'meetings\')">Meetings</a><a id="n_mom" onclick="go(\'mom\')">MoM</a></div></div>';
+  return `<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`;
+ }).join('');
+}
 function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin'?['UI/UX','Digital Marketing','Designer','Admin']:[u.division]);
  if(u.role!=='Admin')ACTIVE_DIVISION=u.division;else if(!AVAILABLE_DIVISIONS.includes(ACTIVE_DIVISION))ACTIVE_DIVISION='UI/UX';
  sessionStorage.setItem('division',ACTIVE_DIVISION);$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
  $('#division-control').innerHTML=u.role==='Admin'?`<label class="sr-only" for="division-select">Division</label><select id="division-select" onchange="switchDivision(this.value)">${AVAILABLE_DIVISIONS.map(d=>`<option ${d===ACTIVE_DIVISION?'selected':''}>${esc(d)}</option>`).join('')}</select>`:'';
- $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||u.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');
- go('dash')}
+ renderNavigation();go('dash')}
 function switchDivision(d){if(U.role!=='Admin'||!AVAILABLE_DIVISIONS.includes(d))return;ACTIVE_DIVISION=d;sessionStorage.setItem('division',d);P=[];D=[];M=[];UL=[];UC=null;TDay=null;if(typeof meetingsState!=='undefined'){meetingsState.loaded=false;meetingsState.directory=null;meetingsState.meetings=[];meetingsState.participants=[];meetingsState.minutes=[];meetingsState.actionItems=[];}
- $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||U.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');go('dash')}
+ renderNavigation();go('dash')}
 
-async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+(p==='mom'?'meetings':p)));
- const n=NAV.find(x=>x[0]==p);$('#title').textContent=n?n[1]:(p==='mom'?'Meeting Minutes':p);$('#sub').textContent=(U.role=='Admin'?'All members':'My data')+' · '+ACTIVE_DIVISION;
+async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id==='n_'+p));
+ document.querySelectorAll('.nav-group').forEach(group=>group.classList.toggle('active',p==='meetings'||p==='mom'));
+ const n=NAV.find(x=>x[0]===p);$('#title').textContent=p==='mom'?'Meeting Minutes':(p==='meetings'?'Meetings':(n?n[1]:p));$('#sub').textContent=(U.role==='Admin'?'All members':'My data')+' · '+ACTIVE_DIVISION;
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';try{await V[p]()}catch(e){$('#view').innerHTML='';toast(msg(e),1)}}
 
 function modal(t,b,ok,fn){var modalClass=t==='Create Meeting'?' meeting-modal':(t==='Create Meeting Minutes'?' mom-modal':'');$('#m').innerHTML=`<div class="mb${modalClass}"><h3>${t}</h3>${b}<div class="mf"><button class="btn2" onclick="cm()">Cancel</button><button class="btn" id="mo">${ok}</button></div></div>`;$('#m').hidden=false;
@@ -322,10 +329,15 @@ function meetingsRenderCalendar() {
       cell.setDate(start.getDate() + i);
       var date = meetingsDateString(cell.getFullYear(), cell.getMonth() + 1, cell.getDate());
       var sameMonth = cell.getMonth() === cursorParts.month - 1;
-      var count = meetingsGetItemsForDate(date).length;
+      var dayItems = meetingsGetItemsForDate(date);
+      var count = dayItems.length;
+      var hasMeeting = dayItems.some(function (entry) { return entry.kind === 'Meeting'; });
+      var hasMom = dayItems.some(function (entry) { return entry.kind === 'Meeting Minutes'; });
+      var markers = count ? '<span class="meet-cal-markers" aria-label="' + count + ' scheduled item(s)">' +
+        (hasMeeting ? '<i class="meet-cal-dot meeting-dot" title="Meeting"></i>' : '') +
+        (hasMom ? '<i class="meet-cal-dot mom-dot" title="MoM"></i>' : '') + '</span>' : '';
       var classes = ['meet-cal-day', sameMonth ? '' : 'outside', date === selected ? 'selected' : '', date === today() ? 'today' : ''].filter(Boolean).join(' ');
-      html += '<button type="button" class="' + classes + '" onclick="meetingsSelectDate(\'' + date + '\')"><span>' + cell.getDate() + '</span>' +
-        (count ? '<i class="meet-cal-dot" aria-label="' + count + ' scheduled item(s)"></i>' : '') + '</button>';
+      html += '<button type="button" class="' + classes + '" onclick="meetingsSelectDate(\'' + date + '\')"><span>' + cell.getDate() + '</span>' + markers + '</button>';
     }
     html += '</div>';
   } else if (meetingsState.view === 'week') {
@@ -337,8 +349,11 @@ function meetingsRenderCalendar() {
       wd.setDate(day.getDate() + w);
       var wdStr = meetingsDateString(wd.getFullYear(), wd.getMonth() + 1, wd.getDate());
       var items = meetingsGetItemsForDate(wdStr);
+      var weekHasMeeting = items.some(function (entry) { return entry.kind === 'Meeting'; });
+      var weekHasMom = items.some(function (entry) { return entry.kind === 'Meeting Minutes'; });
+      var weekMarkers = '<span class="meet-cal-markers">' + (weekHasMeeting ? '<i class="meet-cal-dot meeting-dot"></i>' : '') + (weekHasMom ? '<i class="meet-cal-dot mom-dot"></i>' : '') + '</span>';
       html += '<button type="button" class="meet-cal-week-day ' + (wdStr === selected ? 'selected' : '') + '" onclick="meetingsSelectDate(\'' + wdStr + '\')">' +
-        '<small>' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][wd.getDay()] + '</small><b>' + wd.getDate() + '</b><span>' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</span></button>';
+        '<small>' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][wd.getDay()] + '</small><b>' + wd.getDate() + '</b>' + weekMarkers + '<span>' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</span></button>';
     }
     html += '</div>';
   } else {
@@ -359,8 +374,9 @@ function meetingsEventMarkup(entry) {
   var item = entry.item || {};
   var label = entry.kind === 'Meeting' ? ((item.startTime || '') + (item.endTime ? ' – ' + item.endTime : '')) : 'Minutes';
   var onclick = entry.kind === 'Meeting' ? 'meetingsShowDetails(\'' + meetingsEsc(item.id) + '\')' : 'momShowDetails(\'' + meetingsEsc(item.id) + '\')';
-  return '<button type="button" class="meet-event" ' + (onclick ? 'onclick="' + onclick + '"' : 'disabled') + '>' +
-    '<span class="meet-event-kind">' + meetingsEsc(entry.kind) + '</span><b>' + meetingsEsc(entry.title) + '</b><small>' + meetingsEsc(label) + '</small></button>';
+  var eventClass = entry.kind === 'Meeting' ? 'meeting-event' : 'mom-event';
+  return '<button type="button" class="meet-event ' + eventClass + '" ' + (onclick ? 'onclick="' + onclick + '"' : 'disabled') + '>' +
+    '<span class="meet-event-kind">' + meetingsEsc(entry.kind === 'Meeting Minutes' ? 'MoM' : entry.kind) + '</span><b>' + meetingsEsc(entry.title) + '</b><small>' + meetingsEsc(label) + '</small></button>';
 }
 function meetingsSelectDate(date) {
   if (!meetingsDateParts(date)) return;
@@ -529,12 +545,12 @@ function meetingsRenderPage() {
   var view = document.getElementById('view');
   if (!view) return;
   view.innerHTML = '<div class="meet-toolbar">' +
-    '<div class="meet-toolbar-left"><button class="btn" type="button" onclick="meetingsOpenCreate(meetingsState.selectedDate)">+ Create Meeting</button><button class="btn2" type="button" onclick="go(\'mom\')">Meeting Minutes</button>' +
+    '<div class="meet-toolbar-left"><button class="btn" type="button" onclick="meetingsOpenCreate(meetingsState.selectedDate)">+ Create Meeting</button>' +
     '<span class="meet-division-label">' + meetingsEsc(ACTIVE_DIVISION) + ' division</span></div>' +
     '<div class="meet-toolbar-right"><button class="btn2" type="button" onclick="meetingsReload()">Refresh</button></div></div>' +
     '<section class="meet-calendar-card card"><div class="meet-cal-toolbar"><div class="meet-cal-nav"><button class="btn2" type="button" onclick="meetingsNavigate(-1)" aria-label="Previous period">‹</button><b id="meetings-period-title"></b><button class="btn2" type="button" onclick="meetingsNavigate(1)" aria-label="Next period">›</button><button class="btn2" type="button" onclick="meetingsGoToday()">Today</button></div>' +
     '<div class="seg meet-view-switch"><button type="button" data-meet-view="month" class="on" onclick="meetingsSetView(\'month\')">Month</button><button type="button" data-meet-view="week" onclick="meetingsSetView(\'week\')">Week</button><button type="button" data-meet-view="day" onclick="meetingsSetView(\'day\')">Day</button></div></div>' +
-    '<div id="meetings-calendar"></div><div id="meetings-selected-items" class="meet-selected-items"></div></section>' +
+    '<div class="meet-calendar-legend"><span><i class="meeting-key"></i> Meeting</span><span><i class="mom-key"></i> MoM</span></div><div id="meetings-calendar"></div><div id="meetings-selected-items" class="meet-selected-items"></div></section>' +
     '<section class="card meet-list-card"><div class="meet-list-head"><div><b>Meetings</b><small>Schedules in ' + meetingsEsc(ACTIVE_DIVISION) + '</small></div><input id="meetings-search" type="search" placeholder="Search meetings" value="' + meetingsEsc(meetingsState.query) + '" oninput="meetingsState.query=this.value;meetingsRenderList()"></div><div id="meetings-list"></div></section>';
   meetingsRefreshPeriodTitle();
   meetingsSetView(meetingsState.view);
@@ -600,5 +616,5 @@ function momApplyMeeting(id){var date=document.getElementById('mom-date');date.d
 function momShowDetails(id){var m=meetingsState.minutes.find(x=>x.id===id);if(!m)return;var acts=meetingsState.actionItems.filter(x=>x.momId===id);var people=Array.isArray(m.participants)?m.participants:[];var html='<article class="mom-print"><div class="mom-print-head"><small>MEETING MINUTES</small><h1>'+meetingsEsc(m.title)+'</h1><p>'+meetingsEsc(meetingsFormatDate(m.date))+(m.meetingTime?' · '+meetingsEsc(m.meetingTime):'')+(m.projectName?' · '+meetingsEsc(m.projectName):'')+'</p></div><h3>Participants</h3><p>'+meetingsEsc(people.join(', ')||'—')+'</p>'+momPrintSection('Summary',m.summary)+momPrintSection('Discussion',m.discussion)+momPrintSection('Decisions',m.decisions)+'<h3>Action Items</h3><ul>'+acts.map(x=>'<li>'+meetingsEsc(x.title)+'</li>').join('')+'</ul></article>';var shell='<div class="mom-detail-actions"><button type="button" class="btn" onclick="momExport(\''+meetingsEsc(id)+'\')">Export PDF</button></div>'+html;modal(m.title,shell,'Close',async function(){});var ok=document.getElementById('mo');if(ok)ok.textContent='Close'}
 function momPrintSection(title,html){return '<h3>'+title+'</h3><div class="mom-rich-output">'+(html||'<p>—</p>')+'</div>'}
 function momExport(id){var m=meetingsState.minutes.find(x=>x.id===id);if(!m)return;var acts=meetingsState.actionItems.filter(x=>x.momId===id);var people=Array.isArray(m.participants)?m.participants:[];var doc='<!doctype html><html><head><meta charset="utf-8"><title>'+meetingsEsc(m.title)+'</title><style>body{font:14px Arial,sans-serif;color:#202938;line-height:1.6;margin:36px}h1{font-size:24px;margin:6px 0}h2{font-size:16px;margin:26px 0 8px;border-bottom:1px solid #d9e0ea;padding-bottom:6px}.meta{color:#64748b}.brand{font-size:11px;letter-spacing:1.5px;color:#2563a8;font-weight:bold}.content{overflow-wrap:anywhere}li{margin:5px 0}@media print{body{margin:18mm}h2{break-after:avoid}li,p{orphans:3;widows:3}}</style></head><body><div class="brand">MEETING MINUTES</div><h1>'+meetingsEsc(m.title)+'</h1><p class="meta">'+meetingsEsc(meetingsFormatDate(m.date))+(m.meetingTime?' · '+meetingsEsc(m.meetingTime):'')+(m.projectName?' · '+meetingsEsc(m.projectName):'')+'</p><h2>Participants</h2><p>'+meetingsEsc(people.join(', ')||'—')+'</p><h2>Summary</h2><div class="content">'+(m.summary||'—')+'</div><h2>Discussion</h2><div class="content">'+(m.discussion||'—')+'</div><h2>Decisions</h2><div class="content">'+(m.decisions||'—')+'</div><h2>Action Items</h2><ul>'+acts.map(x=>'<li>'+meetingsEsc(x.title)+'</li>').join('')+'</ul></body></html>';var w=window.open('','_blank');if(!w)return toast('Please allow pop-ups to export the PDF.',1);w.document.open();w.document.write(doc);w.document.close();w.focus();setTimeout(function(){w.print()},350)}
-V.mom = async function(){await meetingsLoad(false);var rows=meetingsState.minutes.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));var html='<div class="meet-toolbar"><div class="meet-toolbar-left"><button class="btn2" onclick="go(\'meetings\')">← Calendar & Meetings</button><button class="btn" onclick="momOpenCreate(meetingsState.selectedDate)">+ Create MoM</button><span class="meet-division-label">'+meetingsEsc(ACTIVE_DIVISION)+' division</span></div><button class="btn2" onclick="meetingsReloadMom()">Refresh</button></div><section class="card mom-list-card"><div class="meet-list-head"><div><b>Meeting Minutes</b><small>Linked and standalone minutes</small></div></div>'+(rows.length?rows.map(m=>'<button class="meet-list-row" onclick="momShowDetails(\''+meetingsEsc(m.id)+'\')"><span class="meet-list-date"><b>'+meetingsEsc(String(m.date||'').slice(8,10))+'</b><small>'+meetingsEsc(String(m.date||'').slice(0,7))+'</small></span><span class="meet-list-main"><b>'+meetingsEsc(m.title)+'</b><small>'+(m.meetingId?'Linked meeting':'Standalone')+' · '+meetingsEsc(m.projectName||'No project')+'</small></span><span class="meet-list-time">'+meetingsEsc(m.status||'Draft')+'</span></button>').join(''):'<div class="empty">No meeting minutes yet.</div>')+'</section>';document.getElementById('view').innerHTML=html;};
+V.mom = async function(){await meetingsLoad(false);var rows=meetingsState.minutes.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));var html='<div class="meet-toolbar"><div class="meet-toolbar-left"><button class="btn" onclick="momOpenCreate(meetingsState.selectedDate)">+ Create MoM</button><span class="meet-division-label">'+meetingsEsc(ACTIVE_DIVISION)+' division</span></div><button class="btn2" onclick="meetingsReloadMom()">Refresh</button></div><section class="card mom-list-card"><div class="meet-list-head"><div><b>Meeting Minutes</b><small>Linked and standalone minutes</small></div></div>'+(rows.length?rows.map(m=>'<button class="meet-list-row" onclick="momShowDetails(\''+meetingsEsc(m.id)+'\')"><span class="meet-list-date"><b>'+meetingsEsc(String(m.date||'').slice(8,10))+'</b><small>'+meetingsEsc(String(m.date||'').slice(0,7))+'</small></span><span class="meet-list-main"><b>'+meetingsEsc(m.title)+'</b><small>'+(m.meetingId?'Linked meeting':'Standalone')+' · '+meetingsEsc(m.projectName||'No project')+'</small></span><span class="meet-list-time">'+meetingsEsc(m.status||'Draft')+'</span></button>').join(''):'<div class="empty">No meeting minutes yet.</div>')+'</section>';document.getElementById('view').innerHTML=html;};
 async function meetingsReloadMom(){meetingsState.loaded=false;await meetingsLoad(true);V.mom()}
