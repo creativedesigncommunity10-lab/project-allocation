@@ -26,13 +26,15 @@ function out(){api('logout').finally(()=>{sessionStorage.clear();location.reload
 if(T)api('me').then(start).catch(()=>{});
 
 const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['meetings','Meetings & Agenda'],['usr','User Management','A'],['health','Data Connection','A']];
+let meetingsNavExpanded=false;
 function renderNavigation(){
  const visible=NAV.filter(n=>n[2]!=='A'||U.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer');
  $('#nav').innerHTML=visible.map(n=>{
-  if(n[0]==='meetings')return '<div class="nav-group"><div class="nav-group-title">Meetings &amp; Agenda</div><div class="nav-subnav"><a id="n_meetings" onclick="go(\'meetings\')">Meetings</a><a id="n_mom" onclick="go(\'mom\')">MoM</a></div></div>';
+  if(n[0]==='meetings')return '<div class="nav-group"><button type="button" class="nav-group-toggle" id="n_meetings_group" aria-expanded="'+meetingsNavExpanded+'" onclick="toggleMeetingsNav()"><span>Meetings &amp; Agenda</span><span class="nav-chevron" aria-hidden="true">⌄</span></button><div class="nav-subnav" '+(meetingsNavExpanded?'':'hidden')+'><a id="n_meetings" onclick="go(\'meetings\')">Meetings</a><a id="n_mom" onclick="go(\'mom\')">MoM</a></div></div>';
   return `<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`;
  }).join('');
 }
+function toggleMeetingsNav(){meetingsNavExpanded=!meetingsNavExpanded;const group=document.querySelector('.nav-group');const toggle=document.getElementById('n_meetings_group');const submenu=group&&group.querySelector('.nav-subnav');if(toggle)toggle.setAttribute('aria-expanded',String(meetingsNavExpanded));if(submenu)submenu.hidden=!meetingsNavExpanded;}
 function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin'?['UI/UX','Digital Marketing','Designer','Admin']:[u.division]);
  if(u.role!=='Admin')ACTIVE_DIVISION=u.division;else if(!AVAILABLE_DIVISIONS.includes(ACTIVE_DIVISION))ACTIVE_DIVISION='UI/UX';
  sessionStorage.setItem('division',ACTIVE_DIVISION);$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
@@ -41,7 +43,7 @@ function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin
 function switchDivision(d){if(U.role!=='Admin'||!AVAILABLE_DIVISIONS.includes(d))return;ACTIVE_DIVISION=d;sessionStorage.setItem('division',d);P=[];D=[];M=[];UL=[];UC=null;TDay=null;if(typeof meetingsState!=='undefined'){meetingsState.loaded=false;meetingsState.directory=null;meetingsState.meetings=[];meetingsState.participants=[];meetingsState.minutes=[];meetingsState.actionItems=[];}
  renderNavigation();go('dash')}
 
-async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id==='n_'+p));
+async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;if(p==='meetings'||p==='mom'){meetingsNavExpanded=true;const toggle=document.getElementById('n_meetings_group');const submenu=document.querySelector('.nav-group .nav-subnav');if(toggle)toggle.setAttribute('aria-expanded','true');if(submenu)submenu.hidden=false;}document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id==='n_'+p));
  document.querySelectorAll('.nav-group').forEach(group=>group.classList.toggle('active',p==='meetings'||p==='mom'));
  const n=NAV.find(x=>x[0]===p);$('#title').textContent=p==='mom'?'Meeting Minutes':(p==='meetings'?'Meetings':(n?n[1]:p));$('#sub').textContent=(U.role==='Admin'?'All members':'My data')+' · '+ACTIVE_DIVISION;
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';try{await V[p]()}catch(e){$('#view').innerHTML='';toast(msg(e),1)}}

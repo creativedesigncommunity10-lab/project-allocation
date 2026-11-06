@@ -311,13 +311,17 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
  .meet-span-2{grid-column:span 1}
 }
 
-/* Meetings & Agenda sub-navigation */
-.nav-group{margin:2px 0 8px;padding:4px 0 6px;border-radius:12px}
-.nav-group-title{padding:10px 14px 7px;color:var(--t2);font-size:12px;font-weight:700;letter-spacing:.02em}
-.nav-subnav{display:flex;flex-direction:column;gap:2px;padding-left:10px;border-left:2px solid #dce8f8;margin-left:14px}
-#nav .nav-subnav a{font-size:13px;padding:9px 12px;margin:0;min-height:38px}
+/* Meetings & Agenda: compact chevron disclosure navigation */
+.nav-group{margin:0 0 4px;padding:0;border-radius:12px}
+#nav .nav-group-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;min-height:44px;border:0;border-radius:12px;background:transparent;color:var(--t2);font:inherit;text-align:left;cursor:pointer;transition:background .15s,color .15s}
+#nav .nav-group-toggle:hover{background:rgba(59,130,246,.1)}
+#nav .nav-group.active .nav-group-toggle{color:#1856b5;font-weight:700}
+.nav-chevron{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;font-size:18px;line-height:1;transform:rotate(0deg);transition:transform .18s ease;color:currentColor}
+#nav .nav-group-toggle[aria-expanded="true"] .nav-chevron{transform:rotate(180deg)}
+.nav-subnav{display:flex;flex-direction:column;gap:2px;padding:3px 0 5px 12px;margin-left:14px}
+.nav-subnav[hidden]{display:none}
+#nav .nav-subnav a{font-size:13px;padding:9px 12px;margin:0;min-height:38px;border-radius:9px}
 #nav .nav-subnav a.on{background:#eaf2ff;color:#1856b5;box-shadow:none;font-weight:700}
-.nav-group.active .nav-group-title{color:#1856b5}
 
 /* Distinguish calendar entries: blue = Meeting, yellow = MoM */
 .meet-calendar-legend{display:flex;gap:16px;align-items:center;justify-content:flex-end;margin:-5px 2px 10px;color:var(--t2);font-size:11px}

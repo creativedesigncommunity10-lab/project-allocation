@@ -1,0 +1,9 @@
+Meetings & Agenda navigation refinement
+
+- Replaced the always-visible group heading/sub-navigation treatment with a compact disclosure row.
+- Added a chevron that rotates when the group expands/collapses.
+- Meetings and MoM are revealed only when the parent navigation is expanded.
+- Navigating to Meetings or MoM automatically expands the group and highlights the active sub-page.
+- No API, spreadsheet schema, meeting data, MoM data, or calendar event colors were changed in this update.
+- Frontend JavaScript syntax checked with node --check.
+- Runtime/browser testing has not been performed.
