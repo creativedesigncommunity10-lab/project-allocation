@@ -311,16 +311,18 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
  .meet-span-2{grid-column:span 1}
 }
 
-/* Meetings & Agenda: compact chevron disclosure navigation */
+/* Meetings & Agenda: icon-based disclosure navigation */
 .nav-group{margin:0 0 4px;padding:0;border-radius:12px}
-#nav .nav-group-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;min-height:44px;border:0;border-radius:12px;background:transparent;color:var(--t2);font:inherit;text-align:left;cursor:pointer;transition:background .15s,color .15s}
-#nav .nav-group-toggle:hover{background:rgba(59,130,246,.1)}
+#nav .nav-group-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;min-height:44px;border:0;border-radius:12px;background:transparent;color:var(--t2);font:inherit;font-size:inherit;font-weight:500;text-align:left;cursor:pointer;transition:background .16s ease,color .16s ease}
+#nav .nav-group-toggle:hover{background:rgba(59,130,246,.08);color:var(--t)}
 #nav .nav-group.active .nav-group-toggle{color:#1856b5;font-weight:700}
-.nav-chevron{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;font-size:18px;line-height:1;transform:rotate(0deg);transition:transform .18s ease;color:currentColor}
-#nav .nav-group-toggle[aria-expanded="true"] .nav-chevron{transform:rotate(180deg)}
-.nav-subnav{display:flex;flex-direction:column;gap:2px;padding:3px 0 5px 12px;margin-left:14px}
+#nav .nav-group-toggle:focus-visible{outline:2px solid #6da4f5;outline-offset:2px}
+.nav-chevron-icon{display:block;flex:0 0 16px;width:16px;height:16px;color:currentColor;opacity:.72;transform:rotate(0deg);transition:transform .18s ease,opacity .18s ease}
+#nav .nav-group-toggle[aria-expanded="true"] .nav-chevron-icon{transform:rotate(90deg);opacity:1}
+.nav-subnav{display:flex;flex-direction:column;gap:3px;padding:3px 0 6px 13px;margin:0 0 0 20px;border-left:1px solid #e4eaf2}
 .nav-subnav[hidden]{display:none}
-#nav .nav-subnav a{font-size:13px;padding:9px 12px;margin:0;min-height:38px;border-radius:9px}
+#nav .nav-subnav a{font-size:13px;padding:9px 12px;margin:0;min-height:38px;border-radius:9px;color:var(--t2)}
+#nav .nav-subnav a:hover{background:rgba(59,130,246,.08);color:var(--t)}
 #nav .nav-subnav a.on{background:#eaf2ff;color:#1856b5;box-shadow:none;font-weight:700}
 
 /* Distinguish calendar entries: blue = Meeting, yellow = MoM */

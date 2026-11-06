@@ -30,7 +30,7 @@ let meetingsNavExpanded=false;
 function renderNavigation(){
  const visible=NAV.filter(n=>n[2]!=='A'||U.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer');
  $('#nav').innerHTML=visible.map(n=>{
-  if(n[0]==='meetings')return '<div class="nav-group"><button type="button" class="nav-group-toggle" id="n_meetings_group" aria-expanded="'+meetingsNavExpanded+'" onclick="toggleMeetingsNav()"><span>Meetings &amp; Agenda</span><span class="nav-chevron" aria-hidden="true">⌄</span></button><div class="nav-subnav" '+(meetingsNavExpanded?'':'hidden')+'><a id="n_meetings" onclick="go(\'meetings\')">Meetings</a><a id="n_mom" onclick="go(\'mom\')">MoM</a></div></div>';
+  if(n[0]==='meetings')return '<div class="nav-group"><button type="button" class="nav-group-toggle" id="n_meetings_group" aria-expanded="'+meetingsNavExpanded+'" onclick="toggleMeetingsNav()"><span>Meetings &amp; Agenda</span><svg class="nav-chevron-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="nav-subnav" '+(meetingsNavExpanded?'':'hidden')+'><a id="n_meetings" onclick="go(\'meetings\')">Meetings</a><a id="n_mom" onclick="go(\'mom\')">MoM</a></div></div>';
   return `<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`;
  }).join('');
 }
