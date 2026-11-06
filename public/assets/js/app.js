@@ -4,7 +4,6 @@ let T=sessionStorage.getItem('t'),U,P=[],D=[],M=[],UL=[],ACTIVE_DIVISION=session
 const today=()=>new Date().toLocaleDateString('sv',{timeZone:'Asia/Jakarta'});const nv=o=>document.body.classList.toggle('nv',o);
 const API_URL='/.netlify/functions/api';
 let DS=null;
-const MN='Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' '),PC=['#0B3C8C','#1D5FD0','#3B82F6','#38BDF8','#60A5FA','#93C5FD','#7DD3FC','#BFDBFE'];
 async function requestApi(action,payload={},token=T){
  const response=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload,token,division:ACTIVE_DIVISION})});
  let result={};try{result=await response.json()}catch(e){}
@@ -73,10 +72,7 @@ const meetingDateLabel=s=>{const d=new Date((s||'')+'T00:00:00');return Number.i
 const meetingTimeLabel=s=>(s||'').slice(0,5);
 async function loadMeetings(){
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';
- // Validate/load the division-scoped directory first. This avoids two concurrent
- // schema validations and makes a database connection failure deterministic.
- const directory=await api('meetingDirectory');
- const data=await api('meetingList');
+ const [data,directory]=await Promise.all([api('meetingList'),api('meetingDirectory')]);
  MEETINGS=data.meetings||[];MEETING_PARTICIPANTS=data.participants||[];MEETING_MINUTES=data.minutes||[];MEETING_DIRECTORY=directory;
  renderMeetings();
 }
@@ -119,6 +115,7 @@ function meetingDetails(id){const m=MEETINGS.find(x=>x.id===id);if(!m)return;con
 let PGN=25,UC=null;const db=f=>{clearTimeout(window.dt);window.dt=setTimeout(f,200)};
 async function ensureP(){if(!P.length)P=await api('projects');return P}
 /* dashboard */
+const MN='Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' '),PC=['#0B3C8C','#1D5FD0','#3B82F6','#38BDF8','#60A5FA','#93C5FD','#7DD3FC','#BFDBFE'];
 function pie(e){if(!e.length)return'<div class="empty">No allocation in this period.</div>';
  let L=e.slice(0,7);const o=e.slice(7).reduce((a,x)=>a+x[1],0);if(o>0)L=L.concat([['Others',o]]);
  const t=L.reduce((a,x)=>a+x[1],0),P=(a)=>(100+90*Math.cos(a)).toFixed(2)+','+(100+90*Math.sin(a)).toFixed(2);let a0=-Math.PI/2;
