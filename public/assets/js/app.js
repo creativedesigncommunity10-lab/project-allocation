@@ -73,7 +73,10 @@ const meetingDateLabel=s=>{const d=new Date((s||'')+'T00:00:00');return Number.i
 const meetingTimeLabel=s=>(s||'').slice(0,5);
 async function loadMeetings(){
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';
- const [data,directory]=await Promise.all([api('meetingList'),api('meetingDirectory')]);
+ // Validate/load the division-scoped directory first. This avoids two concurrent
+ // schema validations and makes a database connection failure deterministic.
+ const directory=await api('meetingDirectory');
+ const data=await api('meetingList');
  MEETINGS=data.meetings||[];MEETING_PARTICIPANTS=data.participants||[];MEETING_MINUTES=data.minutes||[];MEETING_DIRECTORY=directory;
  renderMeetings();
 }

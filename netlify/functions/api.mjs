@@ -140,9 +140,23 @@ async function meetingRead(tab, endColumn) {
 async function meetingAppend(tab, values) {
   return client().spreadsheets.values.append({ spreadsheetId: meetingsSpreadsheetId(), range: `${quoteSheet(tab)}!A:${columnLetter(MEETING_HEADERS[tab].length)}`, valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values } });
 }
-async function validateMeetingsDatabase() {
+const meetingsSchemaCache = new Map();
+async function validateMeetingsDatabase({ refresh = false } = {}) {
   const db = meetingsSpreadsheetId();
-  const r = await client().spreadsheets.get({ spreadsheetId: db });
+  if (!refresh && meetingsSchemaCache.has(db)) return meetingsSchemaCache.get(db);
+  let r;
+  try {
+    r = await client().spreadsheets.get({ spreadsheetId: db });
+  } catch (error) {
+    const status = Number(error?.code || error?.response?.status || error?.status || 0);
+    if (status === 404) {
+      fail("Meetings database was not found by Google Sheets API. Verify MEETINGS_SPREADSHEET_ID exactly matches the spreadsheet ID and that the service account has Editor access.", 404, "MEETINGS_SPREADSHEET_NOT_FOUND");
+    }
+    if (status === 403) {
+      fail("Google Sheets denied access to the Meetings database. Verify that the spreadsheet is shared with the service account used by this deployment.", 403, "MEETINGS_SPREADSHEET_ACCESS_DENIED");
+    }
+    throw error;
+  }
   const tabs = new Map((r.data.sheets || []).map(x => [x.properties.title, x.properties.sheetId]));
   const issues = [];
   for (const [tab, expected] of Object.entries(MEETING_HEADERS)) {
@@ -152,7 +166,9 @@ async function validateMeetingsDatabase() {
     if (expected.some((h, i) => normalized[i] !== h)) issues.push(`Header mismatch: ${tab}`);
   }
   if (issues.length) fail(`Meetings database validation failed: ${issues.join("; ")}`, 409, "MEETINGS_SCHEMA_INVALID");
-  return { ok: true, tabs: Object.keys(MEETING_HEADERS), spreadsheetIdConfigured: true };
+  const result = { ok: true, tabs: Object.keys(MEETING_HEADERS), spreadsheetIdConfigured: true };
+  meetingsSchemaCache.set(db, result);
+  return result;
 }
 function divisionId() {
   const division = requestContext.getStore()?.division;
