@@ -32,7 +32,7 @@ function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin
  $('#division-control').innerHTML=u.role==='Admin'?`<label class="sr-only" for="division-select">Division</label><select id="division-select" onchange="switchDivision(this.value)">${AVAILABLE_DIVISIONS.map(d=>`<option ${d===ACTIVE_DIVISION?'selected':''}>${esc(d)}</option>`).join('')}</select>`:'';
  $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||u.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');
  go('dash')}
-function switchDivision(d){if(U.role!=='Admin'||!AVAILABLE_DIVISIONS.includes(d))return;ACTIVE_DIVISION=d;sessionStorage.setItem('division',d);P=[];D=[];M=[];UL=[];UC=null;TDay=null;
+function switchDivision(d){if(U.role!=='Admin'||!AVAILABLE_DIVISIONS.includes(d))return;ACTIVE_DIVISION=d;sessionStorage.setItem('division',d);P=[];D=[];M=[];UL=[];UC=null;TDay=null;if(typeof meetingsState!=='undefined'){meetingsState.loaded=false;meetingsState.directory=null;meetingsState.meetings=[];meetingsState.participants=[];meetingsState.minutes=[];}
  $('#nav').innerHTML=NAV.filter(n=>n[2]!=='A'||U.role==='Admin').filter(n=>n[2]!=='D'||ACTIVE_DIVISION==='Designer').map(n=>`<a id="n_${n[0]}" onclick="go('${n[0]}')">${n[1]}</a>`).join('');go('dash')}
 
 async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.id=='n_'+p));
@@ -411,10 +411,7 @@ async function meetingsShowDetails(id) {
   if (!item) return;
   try { await meetingsLoadDirectory(); } catch (error) { /* Details remain available without participant names. */ }
   var people = meetingsState.participants.filter(function (p) { return p.meetingId === id; });
-  var names = people.map(function (p) {
-    var member = meetingsState.directory && meetingsState.directory.members.find(function (m) { return m.id === p.userId; });
-    return member ? member.fullName : 'Division member';
-  });
+  var names = people.map(function (p) { return p.name || 'Unnamed participant'; });
   var body = '<div class="meet-detail-grid">' +
     '<div><small>Date</small><b>' + meetingsEsc(meetingsFormatDate(item.date)) + '</b></div>' +
     '<div><small>Time</small><b>' + meetingsEsc(item.startTime + ' – ' + item.endTime) + '</b></div>' +
@@ -447,10 +444,42 @@ async function meetingsLoadDirectory() {
   meetingsState.directory = await api('meetingDirectory');
   return meetingsState.directory;
 }
+function meetingsRenderParticipantChips() {
+  var host = document.getElementById('meet-participant-chips');
+  if (!host) return;
+  host.innerHTML = meetingsState.draftParticipants.length
+    ? meetingsState.draftParticipants.map(function (name, index) {
+        return '<span class="meet-participant-chip">' + meetingsEsc(name) +
+          '<button type="button" aria-label="Remove ' + meetingsEsc(name) + '" onclick="meetingsRemoveParticipant(' + index + ')">×</button></span>';
+      }).join('')
+    : '<span class="meet-participant-empty">No participants added yet.</span>';
+}
+function meetingsAddParticipant() {
+  var input = document.getElementById('meet-participant-input');
+  if (!input) return;
+  var name = input.value.trim().replace(/\s+/g, ' ');
+  if (!name) return;
+  if (meetingsState.draftParticipants.some(function (existing) { return existing.toLowerCase() === name.toLowerCase(); })) {
+    toast('This participant is already added.', 1);
+    return;
+  }
+  if (meetingsState.draftParticipants.length >= 50) {
+    toast('A meeting can have up to 50 participants.', 1);
+    return;
+  }
+  meetingsState.draftParticipants.push(name.slice(0, 120));
+  input.value = '';
+  meetingsRenderParticipantChips();
+  input.focus();
+}
+function meetingsRemoveParticipant(index) {
+  meetingsState.draftParticipants.splice(index, 1);
+  meetingsRenderParticipantChips();
+}
 function meetingsOpenCreate(date) {
+  meetingsState.draftParticipants = [];
   meetingsLoadDirectory().then(function (directory) {
     var projects = directory.projects || [];
-    var members = directory.members || [];
     var selectedDate = meetingsDateParts(date) ? date : today();
     var body = '<div class="meet-form-grid">' +
       '<label class="meet-field meet-span-2">Meeting title<input id="meet-title" maxlength="160" required placeholder="e.g. Weekly Project Review"></label>' +
@@ -463,10 +492,9 @@ function meetingsOpenCreate(date) {
       '<label class="meet-field meet-span-2">Meeting link<input id="meet-link" type="url" placeholder="https://..."></label>' +
       '<label class="meet-field meet-span-2">Agenda<textarea id="meet-agenda" rows="3" placeholder="Topics to discuss"></textarea></label>' +
       '<label class="meet-field meet-span-2">Description<textarea id="meet-description" rows="3" placeholder="Additional information"></textarea></label>' +
-      '</div><div class="meet-participants"><b>Participants</b><small>Select members from ' + meetingsEsc(directory.division || ACTIVE_DIVISION) + ' division only.</small>' +
-      (members.length ? '<div class="meet-participant-grid">' + members.map(function (m) {
-        return '<label><input type="checkbox" name="meet-participant" value="' + meetingsEsc(m.id) + '"><span>' + meetingsEsc(m.fullName) + '</span><small>' + meetingsEsc(m.role || '') + '</small></label>';
-      }).join('') + '</div>' : '<div class="empty">No active members available.</div>') + '</div>';
+      '</div><div class="meet-participants"><b>Participants</b><small>Add any name freely, including internal members, clients, or external guests. No User Management lookup is used.</small>' +
+      '<div class="meet-participant-entry"><input id="meet-participant-input" maxlength="120" placeholder="Enter participant name" onkeydown="if(event.key===\'Enter\'){event.preventDefault();meetingsAddParticipant()}"><button type="button" class="btn2" onclick="meetingsAddParticipant()">Add</button></div>' +
+      '<div id="meet-participant-chips" class="meet-participant-chips"><span class="meet-participant-empty">No participants added yet.</span></div></div>';
     modal('Create Meeting', body, 'Create meeting', async function () {
       var title = document.getElementById('meet-title').value.trim();
       var dateValue = document.getElementById('meet-date').value;
@@ -474,7 +502,7 @@ function meetingsOpenCreate(date) {
       var endTime = document.getElementById('meet-end').value;
       if (!title || !dateValue || !startTime || !endTime) throw new Error('Please complete the meeting title, date, and time.');
       if (endTime <= startTime) throw new Error('End time must be later than start time.');
-      var participantIds = Array.from(document.querySelectorAll('input[name="meet-participant"]:checked')).map(function (input) { return input.value; });
+      var participantNames = meetingsState.draftParticipants.slice();
       await api('meetingCreate', {
         title: title, date: dateValue, startTime: startTime, endTime: endTime,
         projectId: document.getElementById('meet-project').value,
@@ -483,7 +511,7 @@ function meetingsOpenCreate(date) {
         link: document.getElementById('meet-link').value.trim(),
         agenda: document.getElementById('meet-agenda').value.trim(),
         description: document.getElementById('meet-description').value.trim(),
-        participantIds: participantIds
+        participants: participantNames
       });
       meetingsState.loaded = false;
       await meetingsLoad(true);

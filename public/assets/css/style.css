@@ -249,3 +249,12 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
  .meet-participant-grid{grid-template-columns:1fr}
  .meet-cal-nav b{min-width:120px}
 }
+
+
+/* Meetings free-text participant entry */
+.meet-participant-entry{display:flex;gap:8px;align-items:center;margin-top:10px}
+.meet-participant-entry input{flex:1;min-width:0}
+.meet-participant-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.meet-participant-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line,#d9e3f2);border-radius:999px;background:var(--surface,#fff);font-size:13px}
+.meet-participant-chip button{border:0;background:transparent;color:var(--muted,#64748b);font-size:17px;line-height:1;cursor:pointer;padding:0 2px}
+.meet-participant-empty{font-size:12px;color:var(--muted,#64748b)}

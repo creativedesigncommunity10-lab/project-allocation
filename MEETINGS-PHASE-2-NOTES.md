@@ -38,3 +38,13 @@ are used as provided in the supplied stable baseline.
 
 ## Deployment boundary
 Use only `development-multi-division`. Do not merge to or deploy `main`.
+
+
+## Participant model update (free text)
+- Meeting participants are now entered as free-text names (up to 50 names, 120 characters each).
+- Names can represent employees, clients, or external guests.
+- No participant lookup is performed against the division Users sheet.
+- `meetingDirectory` now returns only the active division's optional project list.
+- Participant names are saved to the central Meetings database in `Meeting_Participants`.
+- The expected column D header in `Meeting_Participants` is now `ParticipantName` (replace the former `UserID` header).
+- DivisionID remains assigned and filtered by the authenticated backend context; the user cannot choose it in the form.

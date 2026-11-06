@@ -37,3 +37,10 @@ MEETINGS PHASE 2 (careful additive frontend)
 - Added Meetings & Agenda navigation, calendar Month/Week/Day, list, details, and create meeting UI.
 - No changes to Phase 1 backend, authentication, division routing, or existing feature logic.
 - JavaScript syntax checks passed; live Google Sheets / Netlify runtime not tested.
+
+
+MEETINGS PARTICIPANTS — FREE TEXT
+- Replaced Users-sheet participant lookup with free-text participant names.
+- Participant names are persisted in the central Meeting_Participants tab; no Users database lookup.
+- Renamed expected column D header from UserID to ParticipantName.
+- Kept DivisionID server-derived and division-filtered.

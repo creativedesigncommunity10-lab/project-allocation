@@ -122,7 +122,7 @@ async function append(range, values, input = "RAW") {
 // by the authenticated request context, never by a client-supplied DivisionID.
 const MEETING_HEADERS = {
   Meetings: ["MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MeetingTitle", "MeetingDate", "StartTime", "EndTime", "MeetingType", "Location", "MeetingLink", "Agenda", "Description", "Status", "CreatedBy", "CreatedAt", "UpdatedAt"],
-  Meeting_Participants: ["ParticipantID", "MeetingID", "DivisionID", "UserID", "Attendance", "CreatedAt"],
+  Meeting_Participants: ["ParticipantID", "MeetingID", "DivisionID", "ParticipantName", "Attendance", "CreatedAt"],
   Meeting_Minutes: ["MoMID", "MeetingID", "DivisionID", "ProjectID", "ProjectNameSnapshot", "MoMTitle", "MeetingDate", "Summary", "Discussion", "Decisions", "Status", "PDFURL", "CreatedBy", "CreatedAt", "UpdatedAt", "PublishedAt"],
   Action_Items: ["ActionItemID", "MoMID", "DivisionID", "Title", "Description", "AssignedTo", "Priority", "DueDate", "Status", "CreatedBy", "CreatedAt", "UpdatedAt", "CompletedAt"],
   Action_History: ["HistoryID", "ActionItemID", "DivisionID", "Action", "OldValue", "NewValue", "ChangedBy", "ChangedAt", "Notes"]
@@ -169,10 +169,9 @@ function sheetTime(v) {
 }
 async function meetingDirectory() {
   await validateMeetingsDatabase();
-  const [memberRowsData, projectList] = await Promise.all([users(), projects()]);
+  const projectList = await projects();
   return {
     division: divisionId(),
-    members: memberRowsData.filter(x => x.status === "Active").map(x => ({ id: x.id, username: x.username, fullName: x.fullName, role: x.role })),
     projects: projectList.filter(x => !x.status || x.status === "Active").map(x => ({ id: x.id, name: x.name }))
   };
 }
@@ -189,7 +188,7 @@ async function meetingList() {
     createdBy: r[14] || "", createdAt: r[15] || "", updatedAt: r[16] || ""
   }));
   const allowed = new Set(meetings.map(m => m.id));
-  const participants = participantRows.slice(1).filter(r => r[2] === division && allowed.has(r[1])).map(r => ({ id:r[0], meetingId:r[1], userId:r[3], attendance:r[4] || "Invited" }));
+  const participants = participantRows.slice(1).filter(r => r[2] === division && allowed.has(r[1])).map(r => ({ id:r[0], meetingId:r[1], name:r[3] || "", attendance:r[4] || "Invited" }));
   const minutes = momRows.slice(1).filter(r => r[2] === division).map(r => ({
     id:r[0], meetingId:r[1] || "", division:r[2], projectId:r[3] || "", projectName:r[4] || "", title:r[5] || "",
     date:sheetDate(r[6]), summary:r[7] || "", discussion:r[8] || "", decisions:r[9] || "", status:r[10] || "",
@@ -213,23 +212,22 @@ async function createMeeting(user, p) {
     if (!project) fail("Selected project was not found in this division.", 404);
     projectName = project.name;
   }
-  const activeUsers = (await users()).filter(x => x.status === "Active");
-  const requested = Array.isArray(p.participantIds) ? [...new Set(p.participantIds.map(clean).filter(Boolean))] : [];
-  const allowedIds = new Set(activeUsers.map(x => x.id));
-  if (requested.some(id => !allowedIds.has(id))) fail("One or more participants are not active members of this division.", 403);
-  // Include the creator only when their account belongs to the active division.
-  // A central Admin switching divisions is not silently added as a cross-division participant.
-  if (allowedIds.has(user.id) && !requested.includes(user.id)) requested.push(user.id);
+  // Participants are free-text names (internal members, clients, or external guests).
+  // They are stored only in the Meetings database and are never looked up in Users.
+  const requested = Array.isArray(p.participants)
+    ? [...new Set(p.participants.map(x => clean(x).slice(0, 120)).filter(Boolean))]
+    : [];
+  if (requested.length > 50) fail("A meeting can have up to 50 participants.");
   const now = (Date.now() - Date.UTC(1899,11,30)) / 86400000;
   const meetingId = id("MTG");
   const row = [meetingId, division, projectId, projectName, title, toSerial(date), start, end,
     clean(p.type) || "Online", clean(p.location), clean(p.link), String(p.agenda || "").trim(),
     String(p.description || "").trim(), "Scheduled", user.id, now, now];
   await meetingAppend("Meetings", [row]);
-  if (requested.length) await meetingAppend("Meeting_Participants", requested.map(userId => [id("MTP"), meetingId, division, userId, "Invited", now]));
+  if (requested.length) await meetingAppend("Meeting_Participants", requested.map(name => [id("MTP"), meetingId, division, name, "Invited", now]));
   const verify = (await meetingRead("Meetings", "Q")).slice(1).some(r => r[0] === meetingId && r[1] === division);
   if (!verify) fail("Meeting could not be verified after saving. Please refresh before retrying.", 500);
-  return { id: meetingId, division, title, date, startTime: start, endTime: end, projectId, projectName, participantIds: requested };
+  return { id: meetingId, division, title, date, startTime: start, endTime: end, projectId, projectName, participants: requested };
 }
 async function lastRow(name) {
   const rows = await read(`${quoteSheet(name)}!A:A`);
