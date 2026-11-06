@@ -3,7 +3,6 @@ const $=s=>document.querySelector(s),esc=s=>String(s==null?'':s).replace(/[&<>"'
 let T=sessionStorage.getItem('t'),U,P=[],D=[],M=[],UL=[],ACTIVE_DIVISION=sessionStorage.getItem('division')||'UI/UX',AVAILABLE_DIVISIONS=[];
 const today=()=>new Date().toLocaleDateString('sv',{timeZone:'Asia/Jakarta'});const nv=o=>document.body.classList.toggle('nv',o);
 const API_URL='/.netlify/functions/api';
-let DS=null;
 async function requestApi(action,payload={},token=T){
  const response=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload,token,division:ACTIVE_DIVISION})});
  let result={};try{result=await response.json()}catch(e){}
@@ -26,7 +25,7 @@ async function doLogin(){const b=$('#lb');b.disabled=true;
 function out(){api('logout').finally(()=>{sessionStorage.clear();location.reload()})}
 if(T)api('me').then(start).catch(()=>{});
 
-const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['meetings','Meetings & Agenda'],['req','Request Design','D'],['usr','User Management','A'],['health','Data Connection','A']];
+const NAV=[['dash','Dashboard'],['act','Daily Activities'],['prj','Projects'],['sum','Allocation Summary','A'],['his','Activity History'],['req','Request Design','D'],['usr','User Management','A'],['health','Data Connection','A']];
 function start(u){U=u;AVAILABLE_DIVISIONS=u.availableDivisions||(u.role==='Admin'?['UI/UX','Digital Marketing','Designer','Admin']:[u.division]);
  if(u.role!=='Admin')ACTIVE_DIVISION=u.division;else if(!AVAILABLE_DIVISIONS.includes(ACTIVE_DIVISION))ACTIVE_DIVISION='UI/UX';
  sessionStorage.setItem('division',ACTIVE_DIVISION);$('#login').hidden=true;$('#app').hidden=false;$('#who').innerHTML='<b>'+esc(u.fullName)+'</b><br>'+u.role;
@@ -62,60 +61,13 @@ const V={
  async req(){await loadRequests()},
  async usr(){UL=UC||(UC=await api('users')); 
   $('#view').innerHTML=`<div class="bar2"><button class="btn" onclick="openU(-1)">+ Create User</button></div><div class="card">${tbl(['Username','Name','Role','Member sheet','Status',''],UL.map((x,i)=>`<tr><td>${esc(x.username)}<td>${esc(x.fullName)}<td>${x.role}<td>${esc(x.sheet)}<td><span class="bd ${x.status=='Active'?'ok':'w'}">${x.status}</span><td><a onclick="openU(${i})">Edit</a></tr>`))}</div>`},
- async meetings(){await loadMeetings();},
  async health(){const rows=await api('divisionHealth');$('#view').innerHTML=`<p class="muted">Read-only check of spreadsheet access, required tabs, member sheets, and activity data for each division.</p><div class="card" style="overflow:auto">${tbl(['Division','Connection','Users','Projects','Activity rows','Details'],rows.map(x=>`<tr><td><b>${esc(x.division)}</b><td><span class="bd ${x.ok?'ok':'er'}">${x.ok?'Connected':'Issue found'}</span><td>${x.users??'—'}<td>${x.projects??'—'}<td>${x.activityRows??'—'}<td>${esc(x.message||[...(x.missingTabs||[]).map(t=>'Missing tab: '+t),...(x.missingMemberSheets||[]).map(t=>'Missing member sheet: '+t)].join('; ')|| (x.ok?'All checks passed': 'Check spreadsheet configuration'))}</tr>`))}</div><p class="muted">This check does not change any spreadsheet data.</p>`}
 };
-
-let MEETINGS=[],MEETING_PARTICIPANTS=[],MEETING_MINUTES=[],MEETING_DIRECTORY=null;
-let MEETING_VIEW='month',MEETING_DATE=isoToday(),MEETING_FILTER='';
-const meetingDateLabel=s=>{const d=new Date((s||'')+'T00:00:00');return Number.isNaN(d.getTime())?s:d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})};
-const meetingTimeLabel=s=>(s||'').slice(0,5);
-async function loadMeetings(){
- $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';
- const [data,directory]=await Promise.all([api('meetingList'),api('meetingDirectory')]);
- MEETINGS=data.meetings||[];MEETING_PARTICIPANTS=data.participants||[];MEETING_MINUTES=data.minutes||[];MEETING_DIRECTORY=directory;
- renderMeetings();
-}
-function meetingPeople(meetingId){return MEETING_PARTICIPANTS.filter(p=>p.meetingId===meetingId).map(p=>MEETING_DIRECTORY.members.find(m=>m.id===p.userId)?.fullName||'Member').join(', ')}
-function meetingCard(m){return `<article class="meeting-card"><div class="meeting-card-time"><b>${esc(meetingTimeLabel(m.startTime))}</b><span>${esc(meetingTimeLabel(m.endTime))}</span></div><div class="meeting-card-main"><div class="meeting-card-top"><b>${esc(m.title)}</b><span class="bd ${m.status==='Completed'?'ok':'w'}">${esc(m.status||'Scheduled')}</span></div><div class="muted">${esc(m.projectName||'Internal discussion')} · ${esc(m.type||'Meeting')}</div><div class="meeting-card-meta">${esc(m.location||m.link||'No location specified')}</div></div><button class="btn2 meeting-detail-btn" onclick="meetingDetails('${esc(m.id)}')">Details</button></article>`}
-function renderMeetings(){
- const date=MEETING_DATE,parts=parseISO(date),monthStart=new Date(parts.y,parts.m-1,1),monthEnd=new Date(parts.y,parts.m,0),firstOffset=(monthStart.getDay()+6)%7;
- const monthMeetings=MEETINGS.filter(m=>m.date&&m.date.slice(0,7)===date.slice(0,7)).sort((a,b)=>(a.date+a.startTime).localeCompare(b.date+b.startTime));
- const upcoming=MEETINGS.filter(m=>m.date>=isoToday()).sort((a,b)=>(a.date+a.startTime).localeCompare(b.date+b.startTime));
- let calendar='';
- if(MEETING_VIEW==='month'){
-  const count=Math.ceil((firstOffset+monthEnd.getDate())/7)*7;
-  for(let i=0;i<count;i++){const day=i-firstOffset+1,valid=day>0&&day<=monthEnd.getDate(),d=valid?isoDate(parts.y,parts.m,day):'',items=valid?monthMeetings.filter(m=>m.date===d):[];calendar+=`<button class="meeting-day ${valid?'':'outside'} ${d===isoToday()?'today':''} ${d===date?'selected':''}" ${valid?`onclick="setMeetingDate('${d}')"`:''}><span>${valid?day:''}</span>${items.slice(0,2).map(m=>`<i title="${esc(m.title)}">${esc(m.startTime)} · ${esc(m.title)}</i>`).join('')}${items.length>2?`<small>+${items.length-2} more</small>`:''}</button>`}
-  calendar=`<div class="meeting-weekdays">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<span>${x}</span>`).join('')}</div><div class="meeting-month-grid">${calendar}</div>`;
- }else{
-  const days=MEETING_VIEW==='day'?[date]:Array.from({length:7},(_,i)=>{const d=new Date(parts.y,parts.m-1,parts.d);d.setDate(d.getDate()-((d.getDay()+6)%7)+i);return isoDate(d.getFullYear(),d.getMonth()+1,d.getDate())});
-  calendar=`<div class="meeting-agenda">${days.map(d=>`<section><h4>${meetingDateLabel(d)} ${d===isoToday()?'<span class="bd ok">Today</span>':''}</h4>${MEETINGS.filter(m=>m.date===d).sort((a,b)=>a.startTime.localeCompare(b.startTime)).map(meetingCard).join('')||'<p class="muted">No meetings scheduled.</p>'}</section>`).join('')}</div>`;
- }
- const selectedMeetings=MEETINGS.filter(m=>m.date===date).sort((a,b)=>a.startTime.localeCompare(b.startTime));
- $('#view').innerHTML=`<div class="meetings-head"><div><h3>Meetings & Agenda</h3><p class="muted">Plan meetings, review schedules, and keep discussions organized within ${esc(ACTIVE_DIVISION)}.</p></div><button class="btn" onclick="openMeetingCreate()">+ Create Meeting</button></div>
- <div class="meeting-kpis"><div class="card"><small>Total meetings</small><b>${MEETINGS.length}</b></div><div class="card"><small>Upcoming</small><b>${upcoming.length}</b></div><div class="card"><small>Meeting minutes</small><b>${MEETING_MINUTES.length}</b></div></div>
- <div class="meeting-layout"><section class="card meeting-calendar"><div class="meeting-toolbar"><div class="meeting-month-nav"><button class="btn2" onclick="stepMeetingDate(-1)">‹</button><h3>${MEETING_VIEW==='month'?meetingMonthLabel(date):MEETING_VIEW==='week'?'Week of '+meetingDateLabel(date):meetingDateLabel(date)}</h3><button class="btn2" onclick="stepMeetingDate(1)">›</button><button class="btn2" onclick="setMeetingDate(isoToday())">Today</button></div><div class="seg">${['month','week','day'].map(v=>`<button class="${MEETING_VIEW===v?'on':''}" onclick="setMeetingView('${v}')">${v[0].toUpperCase()+v.slice(1)}</button>`).join('')}</div></div>${calendar}</section>
- <aside class="meeting-side"><section class="card"><h3>${meetingDateLabel(date)}</h3><p class="muted">${selectedMeetings.length} meeting${selectedMeetings.length===1?'':'s'} scheduled</p>${selectedMeetings.map(meetingCard).join('')||'<div class="empty compact">No meetings on this date.</div>'}</section><section class="card"><h3>Upcoming meetings</h3>${upcoming.slice(0,4).map(m=>`<button class="upcoming-row" onclick="setMeetingDate('${m.date}')"><b>${meetingDateLabel(m.date)}</b><span>${esc(m.title)}</span><small>${esc(m.startTime)}</small></button>`).join('')||'<div class="empty compact">No upcoming meetings.</div>'}</section></aside></div>
- <section class="card meeting-list-section"><div class="meeting-list-head"><div><h3>Meeting List</h3><p class="muted">All meetings in ${esc(ACTIVE_DIVISION)}</p></div><input id="meeting-search" placeholder="Search meetings" value="${esc(MEETING_FILTER)}" oninput="filterMeetingList(this.value)"></div><div id="meeting-list-table">${meetingListTable()}</div></section>`;
-}
-function meetingMonthLabel(s){const p=parseISO(s);return new Date(p.y,p.m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
-function setMeetingDate(d){MEETING_DATE=d;renderMeetings()}
-function setMeetingView(v){MEETING_VIEW=v;renderMeetings()}
-function stepMeetingDate(n){const p=parseISO(MEETING_DATE),d=new Date(p.y,p.m-1,p.d);if(MEETING_VIEW==='month')d.setMonth(d.getMonth()+n);else d.setDate(d.getDate()+n*(MEETING_VIEW==='week'?7:1));MEETING_DATE=isoDate(d.getFullYear(),d.getMonth()+1,d.getDate());renderMeetings()}
-function meetingListTable(){const q=MEETING_FILTER.toLowerCase();const rows=MEETINGS.filter(m=>[m.title,m.projectName,m.location,m.status].join(' ').toLowerCase().includes(q)).sort((a,b)=>(b.date+b.startTime).localeCompare(a.date+a.startTime));return tbl(['Meeting','Date & time','Project','Participants','Status',''],rows.map(m=>`<tr><td><b>${esc(m.title)}</b><div class="muted">${esc(m.type)}</div><td>${meetingDateLabel(m.date)}<br>${esc(m.startTime)}–${esc(m.endTime)}<td>${esc(m.projectName||'—')}<td>${esc(meetingPeople(m.id)||'—')}<td><span class="bd ${m.status==='Completed'?'ok':'w'}">${esc(m.status)}</span><td><a onclick="meetingDetails('${esc(m.id)}')">View</a></tr>`))}
-function filterMeetingList(v){MEETING_FILTER=v;const el=$('#meeting-list-table');if(el)el.innerHTML=meetingListTable()}
-function openMeetingCreate(){
- const d=MEETING_DIRECTORY||{members:[],projects:[]};
- const body=`<div class="meeting-form-grid"><div class="field-wide"><label>Meeting title *</label><input id="mt-title" maxlength="160" placeholder="e.g. Project Kick-off Meeting"></div><div><label>Date *</label><input id="mt-date" type="date" value="${isoToday()}"></div><div><label>Meeting type</label><select id="mt-type" onchange="toggleMeetingType()"><option>Online</option><option>Offline</option></select></div><div><label>Start time *</label><input id="mt-start" type="time" value="10:00"></div><div><label>End time *</label><input id="mt-end" type="time" value="11:00"></div><div class="field-wide"><label>Project (optional)</label><select id="mt-project"><option value="">No project / Internal discussion</option>${d.projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></div><div class="field-wide" id="mt-location-wrap"><label>Location / Meeting link</label><input id="mt-location" placeholder="Meeting link or office location"></div><div class="field-wide"><label>Agenda</label><textarea id="mt-agenda" rows="3" placeholder="Topics to discuss"></textarea></div><div class="field-wide"><label>Description</label><textarea id="mt-description" rows="2" placeholder="Additional information (optional)"></textarea></div><div class="field-wide"><label>Participants</label><div class="meeting-participant-list">${d.members.map(m=>`<label class="participant-option"><input type="checkbox" name="mt-participant" value="${esc(m.id)}" ${m.id===U.id?'checked':''}><span><b>${esc(m.fullName)}</b><small>${esc(m.role||m.username)}</small></span></label>`).join('')||'<p class="muted">No active members found.</p>'}</div><small class="muted">Only active members of ${esc(ACTIVE_DIVISION)} are available. You will be included automatically when your account belongs to this division.</small></div></div>`;
- modal('Create Meeting',body,'Create Meeting',async()=>{const payload={title:$('#mt-title').value.trim(),date:$('#mt-date').value,startTime:$('#mt-start').value,endTime:$('#mt-end').value,type:$('#mt-type').value,projectId:$('#mt-project').value,location:$('#mt-location').value.trim(),link:$('#mt-type').value==='Online'?$('#mt-location').value.trim():'',agenda:$('#mt-agenda').value.trim(),description:$('#mt-description').value.trim(),participantIds:[...document.querySelectorAll('input[name="mt-participant"]:checked')].map(x=>x.value)};if(!payload.title)throw new Error('Meeting title is required.');if(!payload.date)throw new Error('Meeting date is required.');await api('meetingCreate',payload);toast('Meeting created successfully.');await loadMeetings()});
-}
-function toggleMeetingType(){const type=$('#mt-type')?.value,label=$('#mt-location-wrap label'),input=$('#mt-location');if(label)label.textContent=type==='Online'?'Meeting link':'Location';if(input)input.placeholder=type==='Online'?'Paste meeting link':'Enter meeting location'}
-function meetingDetails(id){const m=MEETINGS.find(x=>x.id===id);if(!m)return;const people=meetingPeople(id);modal('Meeting Details',`<div class="meeting-detail"><h3>${esc(m.title)}</h3><p>${meetingDateLabel(m.date)} · ${esc(m.startTime)}–${esc(m.endTime)}</p><p><b>Type:</b> ${esc(m.type)}<br><b>Project:</b> ${esc(m.projectName||'Internal discussion')}<br><b>Participants:</b> ${esc(people||'—')}<br><b>Location / Link:</b> ${esc(m.location||m.link||'—')}</p><h4>Agenda</h4><p>${esc(m.agenda||'No agenda added.')}</p>${m.description?`<h4>Description</h4><p>${esc(m.description)}</p>`:''}</div>`,'Close',async()=>{});$('#m .mf .btn2').textContent='Close';$('#mo').style.display='none';}
 
 let PGN=25,UC=null;const db=f=>{clearTimeout(window.dt);window.dt=setTimeout(f,200)};
 async function ensureP(){if(!P.length)P=await api('projects');return P}
 /* dashboard */
-const MN='Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' '),PC=['#0B3C8C','#1D5FD0','#3B82F6','#38BDF8','#60A5FA','#93C5FD','#7DD3FC','#BFDBFE'];
+let DS=null;const MN='Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' '),PC=['#0B3C8C','#1D5FD0','#3B82F6','#38BDF8','#60A5FA','#93C5FD','#7DD3FC','#BFDBFE'];
 function pie(e){if(!e.length)return'<div class="empty">No allocation in this period.</div>';
  let L=e.slice(0,7);const o=e.slice(7).reduce((a,x)=>a+x[1],0);if(o>0)L=L.concat([['Others',o]]);
  const t=L.reduce((a,x)=>a+x[1],0),P=(a)=>(100+90*Math.cos(a)).toFixed(2)+','+(100+90*Math.sin(a)).toFixed(2);let a0=-Math.PI/2;
