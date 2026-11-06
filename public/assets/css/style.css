@@ -345,3 +345,61 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
  .nav-subnav{padding-left:8px}
  .meet-calendar-legend{justify-content:flex-start;margin-top:0}
 }
+
+/* Phase 3 dialog refinement: clear surfaces, wider dialogs, persistent actions */
+#m .mb.meeting-modal,
+#m .mb.mom-modal{
+  display:flex;
+  flex-direction:column;
+  width:min(1120px, calc(100vw - 48px));
+  max-height:min(90dvh, 900px);
+  padding:0;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.72);
+  border-radius:20px;
+  background:rgba(248,251,255,.97);
+  box-shadow:0 24px 80px rgba(15,42,77,.24);
+  -webkit-backdrop-filter:blur(22px) saturate(150%);
+  backdrop-filter:blur(22px) saturate(150%);
+}
+#m .mb.meeting-modal{width:min(980px, calc(100vw - 48px))}
+#m .mb.mom-modal{width:min(1200px, calc(100vw - 48px))}
+#m .mb.meeting-modal .modal-head,
+#m .mb.mom-modal .modal-head{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:20px 28px 14px;border-bottom:1px solid #e7edf5;background:transparent;
+}
+#m .mb.meeting-modal .modal-head h3,
+#m .mb.mom-modal .modal-head h3{margin:0;font-size:19px;line-height:1.35;color:#0B3C8C}
+#m .mb.meeting-modal .modal-close,
+#m .mb.mom-modal .modal-close{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;border:0;border-radius:9px;background:transparent;color:#64748b;font-size:24px;line-height:1;cursor:pointer}
+#m .mb.meeting-modal .modal-close:hover,
+#m .mb.mom-modal .modal-close:hover{background:#edf3fb;color:#173d70}
+#m .mb.meeting-modal .modal-body,
+#m .mb.mom-modal .modal-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 28px 24px;background:transparent}
+#m .mb.meeting-modal .mf,
+#m .mb.mom-modal .mf{position:static;flex:0 0 auto;display:flex;justify-content:flex-end;gap:10px;margin:0;padding:14px 28px 18px;border-top:1px solid #e7edf5;background:rgba(248,251,255,.98);box-shadow:0 -5px 14px rgba(15,42,77,.035)}
+#m .mb.meeting-modal .mf .btn,
+#m .mb.meeting-modal .mf .btn2,
+#m .mb.mom-modal .mf .btn,
+#m .mb.mom-modal .mf .btn2{min-width:112px}
+/* Remove decorative nested white panels that look like unexplained blocks. Keep only actual editable controls white. */
+#m .mb.meeting-modal .meet-form-grid,
+#m .mb.meeting-modal .meet-participants,
+#m .mb.mom-modal .mom-form,
+#m .mb.mom-modal .mom-editor-section,
+#m .mb.mom-modal .mom-optional-sections,
+#m .mb.mom-modal .mom-actions-field{background:transparent;box-shadow:none}
+#m .mb.mom-modal .mom-toolbar{background:#f1f5fa;border-color:#dfe7f1}
+#m .mb.mom-modal .mom-editor{background:#fff;border-color:#d5dfeb;box-shadow:inset 0 1px 2px rgba(15,42,77,.025)}
+#m .mb.mom-modal .mom-optional-section{background:transparent;border:0;box-shadow:none}
+#m .mb.mom-modal .mom-add-section{background:transparent;border:1px dashed #b9c8da}
+#m .mb.mom-modal .mom-action-row{background:rgba(255,255,255,.55)}
+@media(max-width:700px){
+ #m{align-items:center;padding:8px}
+ #m .mb.meeting-modal,#m .mb.mom-modal{width:100%;max-height:96dvh;border-radius:16px}
+ #m .mb.meeting-modal .modal-head,#m .mb.mom-modal .modal-head{padding:16px 16px 12px}
+ #m .mb.meeting-modal .modal-body,#m .mb.mom-modal .modal-body{padding:16px;}
+ #m .mb.meeting-modal .mf,#m .mb.mom-modal .mf{padding:12px 16px max(12px, env(safe-area-inset-bottom));}
+ #m .mb.meeting-modal .mf .btn,#m .mb.meeting-modal .mf .btn2,#m .mb.mom-modal .mf .btn,#m .mb.mom-modal .mf .btn2{flex:1;min-width:0}
+}

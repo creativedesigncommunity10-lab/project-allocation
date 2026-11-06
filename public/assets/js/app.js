@@ -48,7 +48,7 @@ async function go(p){nv(0);if(p==='req'&&ACTIVE_DIVISION!=='Designer')return;if(
  const n=NAV.find(x=>x[0]===p);$('#title').textContent=p==='mom'?'Meeting Minutes':(p==='meetings'?'Meetings':(n?n[1]:p));$('#sub').textContent=(U.role==='Admin'?'All members':'My data')+' · '+ACTIVE_DIVISION;
  $('#view').innerHTML='<div class="card sk"></div><div class="card sk" style="margin-top:14px"></div>';try{await V[p]()}catch(e){$('#view').innerHTML='';toast(msg(e),1)}}
 
-function modal(t,b,ok,fn){var modalClass=t==='Create Meeting'?' meeting-modal':(t==='Create Meeting Minutes'?' mom-modal':'');$('#m').innerHTML=`<div class="mb${modalClass}"><h3>${t}</h3>${b}<div class="mf"><button class="btn2" onclick="cm()">Cancel</button><button class="btn" id="mo">${ok}</button></div></div>`;$('#m').hidden=false;
+function modal(t,b,ok,fn){var isMeeting=t==='Create Meeting',isMom=t==='Create Meeting Minutes';var modalClass=isMeeting?' meeting-modal':(isMom?' mom-modal':'');var formDialog=isMeeting||isMom;var content=formDialog?`<div class="modal-body">${b}</div>`:b;$('#m').innerHTML=`<div class="mb${modalClass}"><div class="modal-head"><h3>${t}</h3><button type="button" class="modal-close" aria-label="Close dialog" onclick="cm()">×</button></div>${content}<div class="mf"><button class="btn2" onclick="cm()">Cancel</button><button class="btn" id="mo">${ok}</button></div></div>`;$('#m').hidden=false;
  $('#mo').onclick=async()=>{$('#mo').disabled=true;try{await fn();cm()}catch(e){toast(msg(e),1);$('#mo').disabled=false}}}
 const cm=()=>$('#m').hidden=true;
 const tbl=(h,rows)=>rows.length?`<table class="rt"><tr>${h.map(x=>'<th>'+x+'</th>').join('')}</tr>${rows.join('')}</table>`:'<div class="empty">Nothing here yet.</div>';
