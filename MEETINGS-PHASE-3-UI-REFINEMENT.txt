@@ -1,0 +1,17 @@
+PHASE 3 - UI REFINEMENT
+
+Changes:
+- Increased Create Meeting and Create Meeting Minutes dialog widths.
+- Compact form spacing to approximately 12-16px.
+- Kept desktop form fields in two columns where appropriate; mobile switches to one column.
+- Placed Meeting Agenda and Description side by side on desktop.
+- Expanded the Discussion rich-text editor default height for more comfortable editing.
+- Discussion is open by default in Create MoM.
+- Summary and Decisions are optional sections, initially collapsed and added on demand.
+- Save payload safely sends empty strings for optional rich-text sections that were not added.
+- Kept Action Items as a simple list without assignee, target date, priority, or status.
+
+Validation:
+- JavaScript syntax check passed for public/assets/js/app.js.
+- JavaScript syntax check passed for netlify/functions/api.mjs.
+- No live Netlify/Google Sheets runtime test was performed.

@@ -262,3 +262,51 @@ input.date-native-hidden,input.month-native-hidden{display:none!important}
 /* Meeting Minutes */
 .mom-form{display:flex;flex-direction:column;gap:16px}.mom-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mom-field{display:flex;flex-direction:column;gap:7px;min-width:0}.mom-field>label,.mom-field>label:first-child{font-size:13px;font-weight:600;color:var(--t)}.mom-field input,.mom-field select{width:100%;min-width:0}.mom-toolbar{display:flex;gap:5px;flex-wrap:wrap;padding:7px;background:#f4f6fa;border:1px solid var(--b);border-bottom:0;border-radius:9px 9px 0 0}.mom-toolbar button{border:1px solid var(--b);background:#fff;border-radius:6px;padding:5px 9px;cursor:pointer;color:var(--t)}.mom-editor{min-height:110px;max-height:280px;overflow:auto;border:1px solid var(--b);border-radius:0 0 9px 9px;padding:12px;background:var(--surface,#fff);outline:none}.mom-editor:empty:before{content:attr(data-placeholder);color:#9aa4b2}.mom-editor:focus{border-color:var(--a)}.mom-action-list{display:flex;flex-direction:column;gap:7px;margin-top:8px}.mom-action-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border:1px solid var(--b);border-radius:8px}.mom-action-row button{border:0;background:transparent;color:var(--e);font-size:18px;cursor:pointer}.mom-detail-actions{display:flex;justify-content:flex-end;margin-bottom:14px}.mom-print{padding:4px 0}.mom-print-head{padding-bottom:14px;border-bottom:1px solid var(--b);margin-bottom:18px}.mom-print-head small{font-size:10px;letter-spacing:1.5px;color:var(--a);font-weight:700}.mom-print-head h1{font-size:22px;margin:7px 0}.mom-print-head p{color:var(--t2);margin:0}.mom-print h3{font-size:14px;margin:18px 0 7px}.mom-rich-output{overflow-wrap:anywhere}.mom-rich-output p{margin:5px 0}.mom-rich-output ul,.mom-rich-output ol{padding-left:22px}.mom-list-card{overflow:hidden}
 @media(max-width:680px){.mom-grid{grid-template-columns:1fr}.mom-toolbar{gap:4px}.mom-toolbar button{padding:6px 8px;font-size:12px}}
+
+
+/* Phase 3 UI refinement: compact meeting and MoM dialogs */
+#m .mb.meeting-modal{width:min(820px,100%);max-height:min(88dvh,820px);padding:22px 24px;overflow:auto}
+#m .mb.mom-modal{width:min(1080px,100%);max-height:92dvh;padding:22px 26px;overflow:auto}
+#m .mb.meeting-modal h3,#m .mb.mom-modal h3{margin:0 0 16px;font-size:19px}
+#m .mb.meeting-modal label,#m .mb.mom-modal label{margin:0;font-weight:600;letter-spacing:0;color:var(--t)}
+.meet-form-grid{gap:12px 16px}
+.meet-field{gap:5px}
+.meet-field input,.meet-field select,.meet-field textarea{padding:9px 10px;min-height:38px}
+.meet-field textarea{min-height:66px}
+.meet-participants{margin-top:12px;padding-top:12px;gap:6px}
+.meet-participant-entry{margin-top:4px;gap:8px}
+.meet-participant-chips{margin-top:6px;gap:6px}
+.mom-form{gap:14px}
+.mom-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+.mom-meta-grid .mom-field{gap:5px}
+.mom-field{gap:5px}
+.mom-field input,.mom-field select{padding:9px 10px;min-height:38px}
+.mom-participants-field{padding-top:2px}
+.mom-editor-section{min-width:0}
+.mom-section-heading{display:flex;align-items:baseline;gap:10px;margin-bottom:7px}
+.mom-section-heading b{font-size:14px;color:var(--t)}
+.mom-section-heading small{font-size:11px;color:var(--t2)}
+.mom-editor{min-height:260px;max-height:440px;padding:16px;line-height:1.55}
+.mom-toolbar{gap:6px;padding:8px}
+.mom-toolbar button{padding:6px 10px;font-size:12px}
+.mom-optional-sections{display:flex;gap:10px;flex-wrap:wrap}
+.mom-optional-section{min-width:140px;flex:1}
+.mom-add-section{width:100%;min-height:38px;padding:8px 12px;border:1px dashed #b8c7da;border-radius:8px;background:#f8faff;color:var(--a);font-size:12px;font-weight:600;font-family:inherit;text-align:left;cursor:pointer}
+.mom-add-section:hover{border-color:var(--a);background:#f1f6ff}
+.mom-optional-section [hidden]{display:none!important}
+.mom-optional-section>div:not([hidden]){margin-top:10px}
+.mom-actions-field{padding-top:12px;border-top:1px solid var(--b)}
+.mom-action-list{gap:6px;margin-top:6px}
+.mom-action-row{padding:7px 10px}
+#m .mb.mom-modal .mf{position:sticky;bottom:-22px;background:rgba(255,255,255,.97);padding:12px 0 2px;margin-top:14px;border-top:1px solid #edf1f7}
+#m .mb.meeting-modal .mf{position:sticky;bottom:-22px;background:rgba(255,255,255,.97);padding:12px 0 2px;margin-top:14px;border-top:1px solid #edf1f7}
+@media(max-width:700px){
+ #m .mb.meeting-modal,#m .mb.mom-modal{width:100%;max-height:94dvh;padding:16px;border-radius:18px}
+ .mom-grid{grid-template-columns:1fr;gap:12px}
+ .mom-editor{min-height:220px;max-height:360px;padding:12px}
+ .mom-optional-sections{display:grid;grid-template-columns:1fr 1fr}
+ .mom-section-heading{display:block}
+ .mom-section-heading small{display:block;margin-top:3px}
+ .meet-form-grid{grid-template-columns:1fr}
+ .meet-span-2{grid-column:span 1}
+}
